@@ -147,7 +147,24 @@ def setup_driver():
     """
     # ตั้งค่า Chrome options
     chrome_options = Options()
-    chrome_options.add_argument("--start-maximized")  # เปิดแบบเต็มหน้าจอ
+
+    # ตรวจสอบว่าทำงานใน GitHub Actions หรือไม่
+    if os.getenv('GITHUB_ACTIONS'):
+        # ตั้งค่าสำหรับ GitHub Actions (headless mode)
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-background-timer-throttling")
+        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+        chrome_options.add_argument("--disable-renderer-backgrounding")
+        print("กำลังรันในโหมด headless สำหรับ GitHub Actions")
+    else:
+        # ตั้งค่าสำหรับรันในเครื่องส่วนตัว
+        chrome_options.add_argument("--start-maximized")  # เปิดแบบเต็มหน้าจอ
+
     chrome_options.add_argument("--disable-notifications")  # ปิดการแจ้งเตือน
     # อัปเดต User-Agent เพื่อให้เหมือนเบราว์เซอร์ทั่วไป
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -866,8 +883,8 @@ def main():
     print("=" * 70)
 
     # รองรับ environment variables สำหรับ GitHub Actions
-    username = os.getenv('maitri_b')
-    password = os.getenv('Bni92919291')
+    username = os.getenv('BNI_USERNAME')
+    password = os.getenv('BNI_PASSWORD')
 
     if not username:
         username = input("กรุณาใส่ชื่อผู้ใช้หรืออีเมล: ")
