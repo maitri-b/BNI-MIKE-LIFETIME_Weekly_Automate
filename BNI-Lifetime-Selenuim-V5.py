@@ -197,7 +197,7 @@ def get_tyfcb_given_report_data(driver):
     
     try:
         # บันทึกภาพหน้าจอก่อนเข้า iframe
-        #driver.save_screenshot("before_iframe.png")
+        # driver.save_screenshot("before_iframe.png") # Disabled file save
         
         # หา iframe ทั้งหมดในหน้า
         all_iframes = driver.find_elements(By.TAG_NAME, "iframe")
@@ -209,9 +209,9 @@ def get_tyfcb_given_report_data(driver):
             print("สลับไปยัง iframe แรกสำเร็จ")
             
             # บันทึกโค้ด HTML ของ iframe หลัก
-            #with open("iframe_main_content.html", "w", encoding="utf-8") as f:
-            #    f.write(driver.page_source)
-            # print("บันทึกโค้ด HTML ของ iframe หลักไว้ที่ iframe_main_content.html สำหรับตรวจสอบ")
+            # with open("iframe_main_content.html", "w", encoding="utf-8") as f:
+            #     f.write(driver.page_source)
+            # print("บันทึกโค้ด HTML ของ iframe หลักไว้ที่ iframe_main_content.html สำหรับตรวจสอบ") # Disabled file save
             
             # ตรวจสอบว่ามี iframe ซ้อนหรือไม่
             inner_iframes = driver.find_elements(By.TAG_NAME, "iframe")
@@ -223,9 +223,9 @@ def get_tyfcb_given_report_data(driver):
                 print("สลับไปยัง iframe ซ้อนสำเร็จ")
                 
                 # บันทึกโค้ด HTML ของ iframe ซ้อน
-                #with open("iframe_nested_content.html", "w", encoding="utf-8") as f:
-                #    f.write(driver.page_source)
-                #print("บันทึกโค้ด HTML ของ iframe ซ้อนไว้ที่ iframe_nested_content.html สำหรับตรวจสอบ")
+                # with open("iframe_nested_content.html", "w", encoding="utf-8") as f:
+                #     f.write(driver.page_source)
+                # print("บันทึกโค้ด HTML ของ iframe ซ้อนไว้ที่ iframe_nested_content.html สำหรับตรวจสอบ") # Disabled file save
                 
                 # ตรวจสอบโครงสร้าง HTML
                 page_source = driver.page_source
@@ -345,12 +345,12 @@ def get_tyfcb_given_report_data(driver):
                                 print(f"Total Amount: {report_data['total_amount']}")
                         
                         # บันทึกภาพหน้าจอของตาราง
-                        table.screenshot("table_screenshot.png")
-                        print("บันทึกภาพตารางไว้ที่ table_screenshot.png สำหรับตรวจสอบ")
+                        # table.screenshot("table_screenshot.png") # Disabled file save
+                        print("ข้ามการบันทึกภาพตารางเพื่อลดการสร้างไฟล์ที่ไม่จำเป็น")
                 except Exception as e:
                     print(f"ไม่สามารถดึงข้อมูลตาราง: {str(e)}")
                     # บันทึกหน้าจอเพื่อตรวจสอบ
-                    driver.save_screenshot("table_error.png")
+                    # driver.save_screenshot("table_error.png") # Disabled file save
                 
                 # สลับกลับไปยัง iframe หลัก
                 driver.switch_to.default_content()
@@ -384,8 +384,8 @@ def export_tyfcb_given_report(driver):
     คลิกปุ่ม Export เพื่อดาวน์โหลดรายงาน TYFCB Given เป็นไฟล์ Excel
     """
     try:
-        ## บันทึกภาพหน้าจอก่อนเข้า iframe
-        #driver.save_screenshot("before_export.png")
+        # บันทึกภาพหน้าจอก่อนเข้า iframe
+        # driver.save_screenshot("before_export.png") # Disabled file save
         
         # สลับไปยัง iframe หลัก
         iframe_main = WebDriverWait(driver, 10).until(
@@ -632,7 +632,7 @@ def login_and_get_tyfcb(username, password):
                 print("\nกำลังค้นหาและคลิกปุ่ม Go โดยตรง...")
                 try:
                     # บันทึกภาพหน้าจอก่อนการคลิกปุ่ม Go
-                    #driver.save_screenshot("popup_before_go.png")
+                    # driver.save_screenshot("popup_before_go.png") # Disabled file save
                     
                     # วิธีที่ 1: หาปุ่มที่มีข้อความแน่นอนว่า "Go"
                     go_button = driver.find_element(By.XPATH, "//button[text()='Go']")
@@ -676,8 +676,8 @@ def login_and_get_tyfcb(username, password):
                 time.sleep(10)
 
                 # ถ่ายภาพหน้าจอของรายงาน
-                driver.save_screenshot("tyfcb_given_report.png")
-                print("บันทึกภาพรายงาน TYFCB Given เรียบร้อย")
+                # driver.save_screenshot("tyfcb_given_report.png") # Disabled file save
+                print("ข้ามการบันทึกภาพรายงาน TYFCB Given เพื่อลดการสร้างไฟล์ที่ไม่จำเป็น")
 
                 # ดึงข้อมูลจากรายงาน - ทำก่อนคลิก Export
                 tyfcb_given_data = get_tyfcb_given_report_data(driver)
@@ -709,27 +709,28 @@ def login_and_get_tyfcb(username, password):
 
                 tyfcb_given_report = report_summary
 
-                # บันทึกข้อมูลเป็นไฟล์ CSV
-                try:
-                    # ใช้ utf-8-sig แทน utf-8 เพื่อให้แสดงภาษาไทยได้ถูกต้อง
-                    with open("tyfcb_given_report.csv", "w", encoding="utf-8-sig", newline='') as f:
-                        writer = csv.writer(f)
-                        # เพิ่มคอลัมน์ Thank you From หลังจาก Date
-                        writer.writerow(["Date", "Thank you From", "Thank you to", "Amount", "New/Repeat", "Inside/Outside", "Comments", "Status"])
-                        for item in tyfcb_given_data["report_data"]:
-                            writer.writerow([
-                                item["date"],
-                                tyfcb_given_data['running_user'], # เพิ่มชื่อ Running User
-                                item["thank_you_to"],
-                                item["amount"],
-                                item["new_repeat"],
-                                item["inside_outside"],
-                                item["comments"],
-                                item["status"]
-                            ])
-                    print("บันทึกข้อมูลรายงานเป็นไฟล์ CSV เรียบร้อย")
-                except Exception as e:
-                    print(f"ไม่สามารถบันทึกไฟล์ CSV: {str(e)}")
+                # บันทึกข้อมูลเป็นไฟล์ CSV - ยกเลิกการบันทึกไฟล์เพื่อลดการสร้างไฟล์ที่ไม่จำเป็น
+                # try:
+                #     # ใช้ utf-8-sig แทน utf-8 เพื่อให้แสดงภาษาไทยได้ถูกต้อง
+                #     with open("tyfcb_given_report.csv", "w", encoding="utf-8-sig", newline='') as f:
+                #         writer = csv.writer(f)
+                #         # เพิ่มคอลัมน์ Thank you From หลังจาก Date
+                #         writer.writerow(["Date", "Thank you From", "Thank you to", "Amount", "New/Repeat", "Inside/Outside", "Comments", "Status"])
+                #         for item in tyfcb_given_data["report_data"]:
+                #             writer.writerow([
+                #                 item["date"],
+                #                 tyfcb_given_data['running_user'], # เพิ่มชื่อ Running User
+                #                 item["thank_you_to"],
+                #                 item["amount"],
+                #                 item["new_repeat"],
+                #                 item["inside_outside"],
+                #                 item["comments"],
+                #                 item["status"]
+                #             ])
+                #     print("บันทึกข้อมูลรายงานเป็นไฟล์ CSV เรียบร้อย")
+                # except Exception as e:
+                #     print(f"ไม่สามารถบันทึกไฟล์ CSV: {str(e)}")
+                print("ข้อมูล CSV พร้อมประมวลผลแล้ว (ไม่มีการบันทึกไฟล์)")
 
                 # คลิกปุ่ม Export เพื่อดาวน์โหลดรายงานเป็นไฟล์ Excel - ทำหลังจากดึงข้อมูลแล้ว
                 export_success = export_tyfcb_given_report(driver)
@@ -752,17 +753,18 @@ def login_and_get_tyfcb(username, password):
     except Exception as e:
         print(f"\nเกิดข้อผิดพลาดในโปรแกรม: {str(e)}")
         if driver:
-            driver.save_screenshot("error.png")
+            # driver.save_screenshot("error.png") # Disabled file save
+            pass
         return False, f"เกิดข้อผิดพลาด: {str(e)}", None
         
     finally:
         if driver:
-            print("\nกำลังบันทึกภาพหน้าจอล่าสุด...")
+            print("\nกำลังปิดเบราว์เซอร์...")
             try:
-                driver.save_screenshot("final_screen.png")
-                print("บันทึกภาพหน้าจอเรียบร้อยแล้ว")
+                # driver.save_screenshot("final_screen.png") # Disabled file save
+                print("ข้ามการบันทึกภาพหน้าจอเพื่อลดการสร้างไฟล์ที่ไม่จำเป็น")
             except:
-                print("ไม่สามารถบันทึกภาพหน้าจอได้")
+                pass
             
             print("\nกำลังปิด WebDriver...")
             driver.quit()
@@ -889,10 +891,10 @@ def main():
         if tyfcb_given_report and tyfcb_given_report != "ไม่พบข้อมูล TYFCB Given Report":
             # จำกัดความยาวของรายงานที่แสดงในคอนโซล
             if len(tyfcb_given_report) > 2000:
-                print(tyfcb_given_report[:2000] + "...\n(ข้อมูลเพิ่มเติมดูได้จากไฟล์ CSV หรือ Excel)")
+                print(tyfcb_given_report[:2000] + "...\n(ข้อมูลเพิ่มเติมดูได้จากการแสดงผลบนหน้าจอ)")
             else:
                 print(tyfcb_given_report)
-            print("\nบันทึกรายงานแล้วเป็นไฟล์ CSV ที่ tyfcb_given_report.csv")
+            print("\nข้อมูลรายงานพร้อมใช้งานแล้ว (ไม่มีการบันทึกไฟล์)")
         else:
             print(tyfcb_given_report)
     else:
@@ -900,9 +902,7 @@ def main():
         print(f"สาเหตุ: {tyfcb_received}")
     print("=" * 40)
     
-    print("\nหากมีการบันทึกภาพหน้าจอ คุณสามารถดูได้จากไฟล์:")
-    print("- final_screen.png: ภาพหน้าจอสุดท้าย")
-    print("- tyfcb_given_report.png: ภาพรายงาน TYFCB Given (ถ้ามี)")
+    print("\nโปรแกรมทำงานเสร็จสิ้นแล้ว ไม่มีการบันทึกไฟล์เพิ่มเติม")
     print("\nกด Enter เพื่อออกจากโปรแกรม...")
     input()
 
