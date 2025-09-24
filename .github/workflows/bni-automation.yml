@@ -1,0 +1,68 @@
+name: BNI TYFCB Data Automation
+
+on:
+  schedule:
+    # รันทุกวันจันทร์เวลา 09:00 UTC (16:00 เวลาไทย)
+    - cron: '0 9 * * MON'
+  workflow_dispatch: # อนุญาตให้รันด้วยตนเองได้
+
+jobs:
+  scrape-bni-data:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Install Chrome and ChromeDriver
+      run: |
+        # Update package list
+        sudo apt-get update
+
+        # Install Chrome
+        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+
+        # Install ChromeDriver (webdriver-manager will handle this in Python)
+        echo "Chrome and ChromeDriver setup completed"
+
+    - name: Setup Google Sheets credentials
+      run: |
+        echo '${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}' > google-sheets-credentials.json
+
+    - name: Run BNI scraper
+      env:
+        BNI_USERNAME: ${{ secrets.BNI_USERNAME }}
+        BNI_PASSWORD: ${{ secrets.BNI_PASSWORD }}
+        GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
+        GOOGLE_SHEET_NAME: ${{ secrets.GOOGLE_SHEET_NAME }}
+      run: |
+        # Set display for headless Chrome
+        export DISPLAY=:99
+        Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+
+        # Run the Python script
+        python BNI-Lifetime-Selenuim-V5.py
+
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: failure-logs
+        path: |
+          *.png
+          *.html
+          error.log
+        retention-days: 7
