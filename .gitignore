@@ -1,0 +1,23 @@
+# Credentials and sensitive files
+google-sheets-credentials.json
+mightyflowmarketing-ffwn-cf9abf085148.json
+*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+
+# Output files
+*.csv
+*.xlsx
+*.png
+
+# OS files
+.DS_Store
+Thumbs.db

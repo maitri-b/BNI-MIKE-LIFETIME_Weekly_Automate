@@ -1,0 +1,16 @@
+# Web scraping dependencies
+selenium>=4.15.0
+webdriver-manager>=4.0.0
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+
+# Data processing
+pandas>=2.0.0
+openpyxl>=3.1.0
+
+# Google Sheets API
+gspread>=5.12.0
+google-auth>=2.23.0
+
+# Utilities
+python-dateutil>=2.8.0
