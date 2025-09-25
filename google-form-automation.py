@@ -7,6 +7,7 @@ import os
 import time
 from datetime import datetime, timedelta
 import re
+from bs4 import BeautifulSoup
 
 # Google Sheets API imports
 try:
@@ -19,13 +20,22 @@ except ImportError:
 
 class GoogleFormSubmitter:
     def __init__(self):
-        self.form_url = "https://docs.google.com/forms/d/e/1FAIpQLSfBkXWsGZXP3IXJ8gR2vZbyAi7VP3R2FSF6YB9ohkr94rIb8g/formResponse"
+        self.form_id = "1FAIpQLSfBkXWsGZXP3IXJ8gR2vZbyAi7VP3R2FSF6YB9ohkr94rIb8g"
+        self.form_url = f"https://docs.google.com/forms/d/e/{self.form_id}/formResponse"
+        self.view_form_url = f"https://docs.google.com/forms/d/e/{self.form_id}/viewform"
+
+        # Entry IDs (จะถูกอัปเดตจากการตรวจสอบ form จริง)
         self.name_entry = "entry.683444359"  # ชื่อ (dropdown)
         self.business_entry = "entry.290745485"  # ยอดธุรกิจ Lifetime
+
+        # Cache สำหรับ dropdown options
+        self.dropdown_options = {}
+        self.dropdown_cache_file = "dropdown_cache.json"
 
         # ข้อมูลที่เคยส่งไปแล้ว (เพื่อป้องกันการส่งซ้ำ)
         self.sent_data_file = "sent_form_data.json"
         self.load_sent_data()
+        self.load_dropdown_cache()
 
     def load_sent_data(self):
         """โหลดข้อมูลที่เคยส่งไปแล้ว"""
@@ -38,6 +48,142 @@ class GoogleFormSubmitter:
         except Exception as e:
             print(f"ไม่สามารถโหลดข้อมูลที่เคยส่งได้: {e}")
             self.sent_data = {}
+
+    def load_dropdown_cache(self):
+        """โหลด cache ของ dropdown options"""
+        try:
+            if os.path.exists(self.dropdown_cache_file):
+                with open(self.dropdown_cache_file, 'r', encoding='utf-8') as f:
+                    cache_data = json.load(f)
+                    self.dropdown_options = cache_data.get('options', {})
+                    print(f"โหลด dropdown cache สำเร็จ: {len(self.dropdown_options)} รายการ")
+            else:
+                self.dropdown_options = {}
+        except Exception as e:
+            print(f"ไม่สามารถโหลด dropdown cache: {e}")
+            self.dropdown_options = {}
+
+    def save_dropdown_cache(self):
+        """บันทึก cache ของ dropdown options"""
+        try:
+            cache_data = {
+                'options': self.dropdown_options,
+                'updated_at': datetime.now().isoformat()
+            }
+            with open(self.dropdown_cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"ไม่สามารถบันทึก dropdown cache: {e}")
+
+    def fetch_form_structure(self):
+        """ดึงโครงสร้างของ Google Form เพื่อหา dropdown options"""
+        try:
+            print("🔍 กำลังตรวจสอบโครงสร้าง Google Form...")
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+
+            response = requests.get(self.view_form_url, headers=headers, timeout=30)
+
+            if response.status_code != 200:
+                print(f"❌ ไม่สามารถเข้าถึง Google Form: Status {response.status_code}")
+                return False
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+
+            # ค้นหา dropdown สำหรับชื่อ
+            dropdown_options = {}
+
+            # ค้นหาทุก select elements
+            selects = soup.find_all(['select', 'div'], attrs={'data-value': True})
+
+            # ค้นหาจาก data attributes ที่มี entry
+            for element in soup.find_all(attrs={'name': re.compile(r'entry\.\d+')}):
+                entry_name = element.get('name')
+                if entry_name:
+                    # ถ้าเป็น select dropdown
+                    if element.name == 'select':
+                        options = []
+                        for option in element.find_all('option'):
+                            if option.get('value') and option.get('value').strip():
+                                options.append(option.get('value').strip())
+                        if options:
+                            dropdown_options[entry_name] = options
+                            print(f"✅ พบ dropdown {entry_name}: {len(options)} ตัวเลือก")
+
+            # ค้นหาจาก JavaScript/JSON ใน page
+            scripts = soup.find_all('script')
+            for script in scripts:
+                if script.string and 'entry.' in script.string:
+                    # ลองหาข้อมูล dropdown จาก script
+                    try:
+                        # ค้นหา pattern ของ dropdown options
+                        import re
+                        pattern = r'"' + self.name_entry + r'"[^"]*"([^"]*)"'
+                        matches = re.findall(pattern, script.string)
+                        if matches:
+                            print(f"🔍 พบข้อมูล dropdown ใน script: {len(matches)} matches")
+                    except:
+                        pass
+
+            if dropdown_options:
+                self.dropdown_options = dropdown_options
+                self.save_dropdown_cache()
+                print(f"✅ อัปเดต dropdown options สำเร็จ")
+                return True
+            else:
+                print("⚠️  ไม่พบ dropdown options ใน form")
+                return False
+
+        except Exception as e:
+            print(f"❌ ไม่สามารถดึงโครงสร้าง form: {e}")
+            return False
+
+    def find_best_name_match(self, running_user):
+        """หาชื่อที่ตรงกันที่สุดใน dropdown options"""
+        if not self.dropdown_options or self.name_entry not in self.dropdown_options:
+            print(f"⚠️  ไม่มี dropdown options สำหรับ {self.name_entry}")
+            return running_user  # ใช้ชื่อเดิม
+
+        available_names = self.dropdown_options[self.name_entry]
+
+        # 1. ตรวจสอบชื่อตรงทุกตัว
+        if running_user in available_names:
+            print(f"✅ พบชื่อตรงทุกตัว: {running_user}")
+            return running_user
+
+        # 2. ตรวจสอบการตรงกันแบบไม่สนใจ case
+        running_user_lower = running_user.lower()
+        for name in available_names:
+            if name.lower() == running_user_lower:
+                print(f"✅ พบชื่อตรงกัน (ไม่สนใจตัวพิมพ์): {name}")
+                return name
+
+        # 3. ตรวจสอบการตรงกันบางส่วน
+        for name in available_names:
+            # ตรวจสอบว่าชื่อใน running_user มีอยู่ใน dropdown หรือไม่
+            if running_user_lower in name.lower() or name.lower() in running_user_lower:
+                print(f"✅ พบชื่อใกล้เคียง: {name} (สำหรับ {running_user})")
+                return name
+
+        # 4. ตรวจสอบคำแรก/คำสุดท้าย
+        running_words = running_user_lower.split()
+        for name in available_names:
+            name_words = name.lower().split()
+            # ตรวจสอบคำแรกหรือคำสุดท้าย
+            if running_words and name_words:
+                if (running_words[0] in name_words or
+                    running_words[-1] in name_words or
+                    name_words[0] in running_words or
+                    name_words[-1] in running_words):
+                    print(f"✅ พบชื่อใกล้เคียง (ตรงบางคำ): {name} (สำหรับ {running_user})")
+                    return name
+
+        # ถ้าไม่เจอเลย
+        print(f"❌ ไม่พบชื่อที่ตรงกัน: {running_user}")
+        print(f"📋 ตัวเลือกที่มี: {', '.join(available_names[:5])}{'...' if len(available_names) > 5 else ''}")
+        return None
 
     def save_sent_data(self):
         """บันทึกข้อมูลที่ส่งแล้ว"""
@@ -69,14 +215,24 @@ class GoogleFormSubmitter:
                 print(f"ข้ามการส่ง: ข้อมูลของ {name} ยอด {clean_amount} เคยส่งไปแล้วเมื่อ {self.sent_data[data_key]}")
                 return False
 
+            # ตรวจสอบและอัปเดต dropdown options ทุกครั้งก่อนส่ง
+            print(f"🔄 ตรวจสอบ dropdown options สำหรับ: {name}")
+            self.fetch_form_structure()
+
+            # หาชื่อที่ตรงกันใน dropdown
+            matched_name = self.find_best_name_match(name)
+            if not matched_name:
+                print(f"❌ ไม่พบชื่อ '{name}' ใน dropdown options - ข้ามการส่ง")
+                return False
+
             # เตรียมข้อมูลสำหรับส่ง
             form_data = {
-                self.name_entry: name,
+                self.name_entry: matched_name,
                 self.business_entry: clean_amount
             }
 
             # ส่งข้อมูล
-            print(f"กำลังส่งข้อมูล: {name} = {clean_amount}")
+            print(f"📤 กำลังส่งข้อมูล: '{matched_name}' = {clean_amount}")
 
             response = requests.post(
                 self.form_url,
@@ -89,13 +245,15 @@ class GoogleFormSubmitter:
             )
 
             if response.status_code == 200:
-                print(f"✅ ส่งข้อมูลสำเร็จ: {name} = {clean_amount}")
-                # บันทึกว่าส่งแล้ว
+                print(f"✅ ส่งข้อมูลสำเร็จ: '{matched_name}' = {clean_amount}")
+                # บันทึกว่าส่งแล้ว (ใช้ชื่อต้นฉบับเป็น key)
                 self.sent_data[data_key] = datetime.now().isoformat()
                 self.save_sent_data()
                 return True
             else:
                 print(f"❌ ส่งข้อมูลไม่สำเร็จ: Status {response.status_code}")
+                if response.text:
+                    print(f"Response: {response.text[:200]}...")
                 return False
 
         except Exception as e:
