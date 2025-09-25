@@ -106,8 +106,8 @@ class GoogleFormSubmitter:
                     if element.name == 'select':
                         options = []
                         for option in element.find_all('option'):
-                            if option.get('value') and option.get('value').strip():
-                                options.append(option.get('value').strip())
+                            if option.get('value') and str(option.get('value')).strip():
+                                options.append(str(option.get('value')).strip())
                         if options:
                             dropdown_options[entry_name] = options
                             print(f"✅ พบ dropdown {entry_name}: {len(options)} ตัวเลือก")
@@ -343,7 +343,7 @@ class BNIDataMonitor:
 
             for fmt in formats:
                 try:
-                    return datetime.strptime(timestamp_str.strip(), fmt)
+                    return datetime.strptime(str(timestamp_str).strip(), fmt)
                 except ValueError:
                     continue
 
@@ -391,9 +391,9 @@ class BNIDataMonitor:
             old_data_count = 0
 
             for record in all_records:
-                running_user = record.get('Running User', '').strip()
-                tyfcb_received = record.get('TYFCB Received', '').strip()
-                timestamp_str = record.get('Timestamp', '').strip()
+                running_user = str(record.get('Running User', '')).strip()
+                tyfcb_received = str(record.get('TYFCB Received', '')).strip()
+                timestamp_str = str(record.get('Timestamp', '')).strip()
 
                 if running_user and tyfcb_received:
                     # ตรวจสอบว่าข้อมูลใหม่หรือไม่
@@ -404,8 +404,8 @@ class BNIDataMonitor:
                             'running_user': running_user,
                             'tyfcb_received': tyfcb_received,
                             'timestamp': timestamp_str,
-                            'chapter': record.get('Chapter', ''),
-                            'total_amount': record.get('Total Given Amount', ''),
+                            'chapter': str(record.get('Chapter', '')),
+                            'total_amount': str(record.get('Total Given Amount', '')),
                             'records_count': record.get('Records Count', 0)
                         }
                     else:
