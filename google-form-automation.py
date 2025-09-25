@@ -121,8 +121,11 @@ class GoogleFormSubmitter:
                 print(f"❌ Sheet มีเพียง {len(headers)} คอลัมน์ แต่ต้องการอย่างน้อย 3 คอลัมน์")
                 return False
 
-            # เตรียมข้อมูล - ใช้ Google Sheets formula และ number
-            timestamp = "=NOW()"  # Google Sheets formula คำนวณเวลาปัจจุบัน
+            # เตรียมข้อมูล - ใช้ proper datetime format สำหรับ Google Sheets
+            from datetime import datetime
+
+            # ส่งเป็น datetime object ที่ gspread จะแปลงให้เป็น serial number
+            timestamp = datetime.now()  # Python datetime object
 
             # แปลงยอดธุรกิจเป็นตัวเลข
             try:
@@ -143,6 +146,23 @@ class GoogleFormSubmitter:
 
             # เพิ่มแถวใหม่
             worksheet.append_row(new_row)
+
+            # หา row ที่เพิ่มไป
+            last_row_num = len(worksheet.get_all_values())
+
+            # Format timestamp cell ให้เป็น datetime format
+            try:
+                cell_range = f'A{last_row_num}'
+                worksheet.format(cell_range, {
+                    'numberFormat': {
+                        'type': 'DATE_TIME',
+                        'pattern': 'm/d/yyyy h:mm:ss'
+                    }
+                })
+                print(f"✅ Format timestamp cell {cell_range} สำเร็จ")
+            except Exception as format_error:
+                print(f"⚠️  ไม่สามารถ format timestamp cell: {format_error}")
+
             print("✅ บันทึกข้อมูลใน Google Sheets สำเร็จ")
             return True
 
