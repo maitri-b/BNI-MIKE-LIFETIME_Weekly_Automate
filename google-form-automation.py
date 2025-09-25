@@ -334,19 +334,58 @@ class GoogleFormSubmitter:
 
             print(f"✅ Sheet มี {len(headers)} คอลัมน์ เพียงพอสำหรับการบันทึก")
 
-            # เตรียมข้อมูลแถวใหม่
-            timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+            # เตรียมข้อมูลแถวใหม่ - ใช้ประเภทข้อมูลที่ถูกต้อง
+            timestamp = datetime.now()  # ใช้ datetime object แทน string
+
+            # แปลงยอดธุรกิจเป็นตัวเลข
+            try:
+                # ลบเครื่องหมายคอมมาและแปลงเป็น float
+                business_amount_clean = str(business_amount).replace(',', '').replace(' ', '')
+                business_amount_num = float(business_amount_clean)
+                print(f"💰 แปลงยอดธุรกิจ: '{business_amount}' → {business_amount_num}")
+            except ValueError:
+                print(f"⚠️  ไม่สามารถแปลงยอดธุรกิจเป็นตัวเลข: '{business_amount}' - ใช้เป็น string")
+                business_amount_num = str(business_amount)  # ใช้เป็น string ถ้าแปลงไม่ได้
 
             # สร้างแถวใหม่ตามจำนวนคอลัมน์ที่มี
             new_row = [''] * len(headers)
-            new_row[timestamp_col - 1] = timestamp
-            new_row[name_col - 1] = name
-            new_row[business_col - 1] = business_amount
+            new_row[timestamp_col - 1] = timestamp  # datetime object
+            new_row[name_col - 1] = name            # string
+            new_row[business_col - 1] = business_amount_num  # number
 
-            print(f"📤 เพิ่มแถวใหม่: {new_row}")
+            print(f"📤 เพิ่มแถวใหม่:")
+            print(f"   Timestamp: {timestamp} (datetime)")
+            print(f"   Name: {name} (string)")
+            print(f"   Amount: {business_amount_num} (number)")
 
             # เพิ่มแถวใหม่
             worksheet.append_row(new_row)
+
+            # แปลงประเภทข้อมูลให้ถูกต้อง
+            last_row = len(worksheet.get_all_values())
+
+            try:
+                # กำหนดให้คอลัมน์ timestamp เป็น datetime format
+                worksheet.format(f'A{last_row}', {
+                    'numberFormat': {
+                        'type': 'DATE_TIME',
+                        'pattern': 'mm/dd/yyyy hh:mm:ss'
+                    }
+                })
+
+                # กำหนดให้คอลัมน์ business amount เป็น number format
+                worksheet.format(f'C{last_row}', {
+                    'numberFormat': {
+                        'type': 'NUMBER',
+                        'pattern': '#,##0'
+                    }
+                })
+
+                print("✅ กำหนด number format สำเร็จ")
+
+            except Exception as format_error:
+                print(f"⚠️  ไม่สามารถกำหนด number format: {format_error}")
+                # ยังคงบันทึกข้อมูลได้ แค่ไม่มี formatting
 
             print("✅ บันทึกข้อมูลใน Google Sheets สำเร็จ")
             return True
