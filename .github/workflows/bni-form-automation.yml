@@ -97,7 +97,7 @@ jobs:
 
     - name: Upload screenshots on failure
       if: failure()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: automation-screenshots-${{ github.run_number }}
         path: |
@@ -108,7 +108,7 @@ jobs:
 
     - name: Upload logs
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: automation-logs-${{ github.run_number }}
         path: |
