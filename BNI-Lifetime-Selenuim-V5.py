@@ -113,26 +113,81 @@ def save_to_google_sheet(tyfcb_received, tyfcb_given_data=None):
         except:
             pass
 
-        # เตรียมข้อมูลที่จะบันทึก
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # เตรียมข้อมูลที่จะบันทึก - ใช้ serial number สำหรับ Google Sheets
+        from datetime import datetime
+        import time
 
-        # ดึงค่าตัวเลขจาก TYFCB Received (เอาเฉพาะตัวเลข)
-        tyfcb_amount = re.sub(r'[^\d,.]', '', tyfcb_received) if tyfcb_received else '0'
+        # ใช้ Unix timestamp แล้วแปลงเป็น Google Sheets serial number
+        # Google Sheets ใช้ serial date จาก 1899-12-30 เป็น day 1
+        now = datetime.now()
+
+        # คำนวณ serial number สำหรับ Google Sheets
+        # Google Sheets epoch: December 30, 1899
+        sheets_epoch = datetime(1899, 12, 30)
+        days_since_epoch = (now - sheets_epoch).total_seconds() / (24 * 60 * 60)
+
+        # ใช้ serial number แทน string
+        timestamp = days_since_epoch
+
+        # ดึงค่าตัวเลขจาก TYFCB Received และแปลงเป็นตัวเลข
+        tyfcb_amount_clean = re.sub(r'[^\d,.]', '', tyfcb_received) if tyfcb_received else '0'
+        try:
+            # แปลงเป็นตัวเลข เพื่อป้องกัน apostrophe prefix
+            tyfcb_amount = float(tyfcb_amount_clean.replace(',', ''))
+            print(f"💰 แปลง TYFCB Received: '{tyfcb_received}' → {tyfcb_amount}")
+        except ValueError:
+            print(f"⚠️  ไม่สามารถแปลง TYFCB Received เป็นตัวเลข: '{tyfcb_received}' - ใช้เป็น string")
+            tyfcb_amount = str(tyfcb_amount_clean)
+
+        # แปลง Total Given Amount เป็นตัวเลขเช่นกัน
+        total_amount = ''
+        if tyfcb_given_data and tyfcb_given_data.get('total_amount'):
+            total_amount_clean = re.sub(r'[^\d,.]', '', str(tyfcb_given_data['total_amount']))
+            try:
+                total_amount = float(total_amount_clean.replace(',', '')) if total_amount_clean else 0
+                print(f"💰 แปลง Total Given Amount: '{tyfcb_given_data['total_amount']}' → {total_amount}")
+            except ValueError:
+                print(f"⚠️  ไม่สามารถแปลง Total Given Amount เป็นตัวเลข - ใช้เป็น string")
+                total_amount = str(total_amount_clean)
 
         row_data = [
-            timestamp,
-            tyfcb_amount,
-            tyfcb_given_data.get('running_user', '') if tyfcb_given_data else '',
-            tyfcb_given_data.get('chapter', '') if tyfcb_given_data else '',
-            tyfcb_given_data.get('total_amount', '') if tyfcb_given_data else '',
-            len(tyfcb_given_data.get('report_data', [])) if tyfcb_given_data else 0
+            timestamp,                  # Google Sheets serial number
+            tyfcb_amount,              # number
+            tyfcb_given_data.get('running_user', '') if tyfcb_given_data else '',  # string
+            tyfcb_given_data.get('chapter', '') if tyfcb_given_data else '',       # string
+            total_amount,              # number
+            len(tyfcb_given_data.get('report_data', [])) if tyfcb_given_data else 0  # number
         ]
 
         # เพิ่มข้อมูลใหม่
         worksheet.append_row(row_data)
 
+        # หา row ที่เพิ่มไป
+        last_row_num = len(worksheet.get_all_values())
+
+        # Format timestamp cell ให้เป็น datetime format
+        try:
+            cell_range = f'A{last_row_num}'
+            worksheet.format(cell_range, {
+                'numberFormat': {
+                    'type': 'DATE_TIME',
+                    'pattern': 'mm/dd/yyyy hh:mm:ss'
+                }
+            })
+            print(f"✅ Format timestamp cell {cell_range} เป็น datetime สำเร็จ")
+        except Exception as format_error:
+            print(f"⚠️  ไม่สามารถ format timestamp cell: {format_error}")
+
+        # ตรวจสอบว่า cell เป็น datetime หรือไม่
+        try:
+            # อ่านค่ากลับมาเพื่อยืนยันว่าเป็น datetime
+            cell_value = worksheet.acell(f'A{last_row_num}').value
+            print(f"🔍 ค่าที่บันทึกใน cell A{last_row_num}: '{cell_value}' (type: {type(cell_value).__name__})")
+        except Exception as check_error:
+            print(f"⚠️  ไม่สามารถตรวจสอบค่า cell: {check_error}")
+
         print(f"✅ บันทึกข้อมูลลง Google Sheets สำเร็จ")
-        print(f"   Timestamp: {timestamp}")
+        print(f"   Timestamp: {timestamp:.6f} (Google Sheets serial number)")
         print(f"   TYFCB Received: {tyfcb_amount}")
 
         return True
