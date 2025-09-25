@@ -5,7 +5,7 @@ import requests
 import json
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 
 # Google Sheets API imports
@@ -166,8 +166,55 @@ class BNIDataMonitor:
         except Exception as e:
             print(f"ไม่สามารถบันทึกข้อมูลปัจจุบัน: {e}")
 
+    def parse_timestamp(self, timestamp_str):
+        """แปลง timestamp string เป็น datetime object"""
+        if not timestamp_str:
+            return None
+
+        try:
+            # ลองหลายรูปแบบ timestamp ที่อาจจะพบ
+            formats = [
+                "%Y-%m-%d %H:%M:%S",     # 2024-01-15 14:30:00
+                "%m/%d/%Y %H:%M:%S",     # 01/15/2024 14:30:00
+                "%d/%m/%Y %H:%M:%S",     # 15/01/2024 14:30:00
+                "%Y-%m-%dT%H:%M:%S",     # ISO format
+                "%Y-%m-%d",              # Date only
+                "%m/%d/%Y",              # Date only US format
+                "%d/%m/%Y",              # Date only EU format
+            ]
+
+            for fmt in formats:
+                try:
+                    return datetime.strptime(timestamp_str.strip(), fmt)
+                except ValueError:
+                    continue
+
+            print(f"⚠️  ไม่สามารถแปลง timestamp: {timestamp_str}")
+            return None
+
+        except Exception as e:
+            print(f"⚠️  ข้อผิดพลาดในการแปลง timestamp {timestamp_str}: {e}")
+            return None
+
+    def is_data_recent(self, timestamp_str, days_limit=7):
+        """ตรวจสอบว่าข้อมูลอัปเดตมาไม่เกินจำนวนวันที่กำหนด"""
+        timestamp = self.parse_timestamp(timestamp_str)
+        if not timestamp:
+            # ถ้าแปลง timestamp ไม่ได้ ให้ถือว่าเป็นข้อมูลเก่า
+            return False
+
+        current_time = datetime.now()
+        time_diff = current_time - timestamp
+
+        is_recent = time_diff <= timedelta(days=days_limit)
+
+        if not is_recent:
+            print(f"   📅 ข้ามข้อมูลเก่า: {timestamp_str} (เก่ากว่า {days_limit} วัน)")
+
+        return is_recent
+
     def get_current_sheet_data(self):
-        """ดึงข้อมูลปัจจุบันจาก Google Sheets"""
+        """ดึงข้อมูลปัจจุบันจาก Google Sheets (เฉพาะข้อมูลที่อัปเดตมาไม่เกิน 7 วัน)"""
         try:
             client = self.setup_google_sheets()
             if not client:
@@ -179,24 +226,37 @@ class BNIDataMonitor:
 
             # ดึงข้อมูลทั้งหมด
             all_records = worksheet.get_all_records()
+            print(f"ดึงข้อมูลจาก Google Sheets: {len(all_records)} รายการทั้งหมด")
 
-            # สร้าง dict จากข้อมูล โดยใช้ Running User เป็น key
-            current_data = {}
+            # กรองเฉพาะข้อมูลใหม่ (ไม่เกิน 7 วัน)
+            recent_data = {}
+            old_data_count = 0
+
             for record in all_records:
                 running_user = record.get('Running User', '').strip()
                 tyfcb_received = record.get('TYFCB Received', '').strip()
+                timestamp_str = record.get('Timestamp', '').strip()
 
                 if running_user and tyfcb_received:
-                    current_data[running_user] = {
-                        'tyfcb_received': tyfcb_received,
-                        'timestamp': record.get('Timestamp', ''),
-                        'chapter': record.get('Chapter', ''),
-                        'total_amount': record.get('Total Given Amount', ''),
-                        'records_count': record.get('Records Count', 0)
-                    }
+                    # ตรวจสอบว่าข้อมูลใหม่หรือไม่
+                    if self.is_data_recent(timestamp_str, days_limit=7):
+                        # ใช้ timestamp เป็นส่วนหนึ่งของ key เพื่อแยกข้อมูลเดียวกันที่มี timestamp ต่างกัน
+                        data_key = f"{running_user}_{timestamp_str}"
+                        recent_data[data_key] = {
+                            'running_user': running_user,
+                            'tyfcb_received': tyfcb_received,
+                            'timestamp': timestamp_str,
+                            'chapter': record.get('Chapter', ''),
+                            'total_amount': record.get('Total Given Amount', ''),
+                            'records_count': record.get('Records Count', 0)
+                        }
+                    else:
+                        old_data_count += 1
 
-            print(f"ดึงข้อมูลจาก Google Sheets สำเร็จ: {len(current_data)} รายการ")
-            return current_data
+            print(f"✅ ข้อมูลใหม่ (ไม่เกิน 7 วัน): {len(recent_data)} รายการ")
+            print(f"⏰ ข้อมูลเก่า (เกิน 7 วัน): {old_data_count} รายการ")
+
+            return recent_data
 
         except Exception as e:
             print(f"ไม่สามารถดึงข้อมูลจาก Google Sheets: {e}")
@@ -217,45 +277,34 @@ class BNIDataMonitor:
             print("ไม่พบข้อมูลใหม่")
             return
 
-        # เปรียบเทียบกับข้อมูลครั้งสุดท้าย
+        # เปรียบเทียบกับข้อมูลครั้งสุดท้าย (เฉพาะข้อมูลใหม่ที่ไม่เกิน 7 วัน)
         new_entries = []
-        updated_entries = []
 
-        for user, data in current_data.items():
-            if user not in self.last_data:
-                # ข้อมูลใหม่
-                new_entries.append((user, data))
-            elif self.last_data[user]['tyfcb_received'] != data['tyfcb_received']:
-                # ข้อมูลที่อัปเดต
-                updated_entries.append((user, data))
+        for data_key, data in current_data.items():
+            if data_key not in self.last_data:
+                # ข้อมูลใหม่ที่ยังไม่เคยส่ง
+                new_entries.append((data_key, data))
 
-        total_to_process = len(new_entries) + len(updated_entries)
-
-        if total_to_process == 0:
-            print("ไม่พบข้อมูลใหม่หรือข้อมูลที่เปลี่ยนแปลง")
+        if len(new_entries) == 0:
+            print("ไม่พบข้อมูลใหม่ที่ต้องส่ง")
             return
 
-        print(f"พบข้อมูลใหม่: {len(new_entries)} รายการ")
-        print(f"พบข้อมูลที่อัปเดต: {len(updated_entries)} รายการ")
+        print(f"🔍 พบข้อมูลใหม่ที่ต้องส่ง: {len(new_entries)} รายการ")
 
         # ส่งข้อมูลไปยัง Google Form
         success_count = 0
 
-        # ส่งข้อมูลใหม่
-        for user, data in new_entries:
-            print(f"\n[ใหม่] {user}: {data['tyfcb_received']}")
-            if self.form_submitter.submit_to_form(user, data['tyfcb_received']):
+        for data_key, data in new_entries:
+            running_user = data['running_user']
+            tyfcb_received = data['tyfcb_received']
+            timestamp = data['timestamp']
+
+            print(f"\n[ใหม่] {running_user}: {tyfcb_received} (Timestamp: {timestamp})")
+            if self.form_submitter.submit_to_form(running_user, tyfcb_received):
                 success_count += 1
             time.sleep(2)  # หน่วงเวลาเพื่อไม่ให้ส่งเร็วเกินไป
 
-        # ส่งข้อมูลที่อัปเดต
-        for user, data in updated_entries:
-            print(f"\n[อัปเดต] {user}: {data['tyfcb_received']} (เดิม: {self.last_data[user]['tyfcb_received']})")
-            if self.form_submitter.submit_to_form(user, data['tyfcb_received']):
-                success_count += 1
-            time.sleep(2)  # หน่วงเวลาเพื่อไม่ให้ส่งเร็วเกินไป
-
-        print(f"\n✅ ส่งข้อมูลสำเร็จ: {success_count}/{total_to_process} รายการ")
+        print(f"\n✅ ส่งข้อมูลสำเร็จ: {success_count}/{len(new_entries)} รายการ")
 
         # บันทึกข้อมูลปัจจุบัน
         self.save_last_data(current_data)
