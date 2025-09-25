@@ -294,52 +294,91 @@ class GoogleFormSubmitter:
             print(f"📝 เตรียมส่งข้อมูลสำหรับ: {name}")
             matched_name = name  # ใช้ชื่อเดิม
 
-            # ใช้ prefill URL โดยตรงแทนการส่งข้อมูลผ่าน API
+            # ใช้ prefill parameters แต่ส่งไป formResponse โดยตรง
             confirmed_name_entry = "entry.683444359"
             confirmed_business_entry = "entry.290745485"
 
-            print(f"📝 สร้าง prefill URL สำหรับ: '{matched_name}' = {clean_amount}")
+            print(f"📝 ส่งข้อมูลด้วย prefill parameters: '{matched_name}' = {clean_amount}")
 
-            # เตรียมข้อมูลสำหรับ prefill URL
+            # เตรียมข้อมูลสำหรับส่ง
             import urllib.parse
             encoded_name = urllib.parse.quote_plus(matched_name)
             encoded_amount = urllib.parse.quote_plus(clean_amount)
 
-            # สร้าง prefill URL
+            # สร้าง prefill URL สำหรับ reference
             prefill_url = (f"https://docs.google.com/forms/d/e/{self.form_id}/viewform"
                           f"?usp=pp_url&{confirmed_name_entry}={encoded_name}"
                           f"&{confirmed_business_entry}={encoded_amount}")
 
-            print(f"🔗 Prefill URL: {prefill_url}")
+            print(f"🔗 Prefill URL (for reference): {prefill_url}")
 
-            # บันทึก prefill URL ไว้ในไฟล์
-            prefill_filename = f"prefill_urls_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            # ส่งไป formResponse ด้วย GET parameters เหมือน prefill แต่ไปที่ submit endpoint
+            submit_url = (f"https://docs.google.com/forms/d/e/{self.form_id}/formResponse"
+                         f"?{confirmed_name_entry}={encoded_name}"
+                         f"&{confirmed_business_entry}={encoded_amount}")
+
+            print(f"📤 Submit URL: {submit_url}")
 
             try:
-                with open(prefill_filename, 'a', encoding='utf-8') as f:
+                # ส่งแบบ GET ไป formResponse
+                print("🚀 กำลังส่งข้อมูลโดยตรงไป formResponse...")
+
+                response = requests.get(
+                    submit_url,
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Referer': 'https://docs.google.com/',
+                    },
+                    timeout=30
+                )
+
+                print(f"📄 Response: Status {response.status_code}, Length: {len(response.text)} chars")
+
+                # บันทึก response สำหรับ debug
+                with open("direct_submit_response.html", 'w', encoding='utf-8') as f:
+                    f.write(response.text)
+
+                # ตรวจสอบความสำเร็จ
+                success_indicators = [
+                    "Your response has been recorded",
+                    "ข้อมูルของคุณได้รับการบันทึกแล้ว",
+                    "การตอบกลับของคุณได้รับการบันทึกแล้ว",
+                    "thank you", "submitted", "received", "recorded"
+                ]
+
+                is_success = any(indicator in response.text.lower() for indicator in success_indicators)
+
+                if response.status_code == 200 and is_success:
+                    print("✅ ส่งข้อมูลสำเร็จ!")
+                    success = True
+                elif response.status_code == 200:
+                    print("⚠️  Response 200 แต่ไม่แน่ใจว่าสำเร็จ")
+                    print(f"   Response preview: {response.text[:200]}...")
+                    # ถือว่าสำเร็จถ้าได้ 200 และไม่มี error message
+                    if "error" not in response.text.lower():
+                        success = True
+                    else:
+                        success = False
+                else:
+                    print(f"❌ ส่งไม่สำเร็จ: Status {response.status_code}")
+                    success = False
+
+                # บันทึกทั้ง prefill URL และ submit URL
+                log_filename = f"form_submission_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                with open(log_filename, 'w', encoding='utf-8') as f:
                     f.write(f"Name: {matched_name}\n")
                     f.write(f"Amount: {clean_amount}\n")
-                    f.write(f"URL: {prefill_url}\n")
+                    f.write(f"Prefill URL: {prefill_url}\n")
+                    f.write(f"Submit URL: {submit_url}\n")
+                    f.write(f"Response Status: {response.status_code}\n")
+                    f.write(f"Success: {success}\n")
                     f.write("-" * 80 + "\n")
 
-                print(f"✅ บันทึก prefill URL ใน {prefill_filename}")
-
-                # สำหรับ GitHub Actions อาจจะพิมพ์ออกมาใน console
-                print("=" * 60)
-                print("🔗 PREFILL URL สำหรับกรอกข้อมูล:")
-                print(prefill_url)
-                print("=" * 60)
-
-                # ถือว่าสำเร็จ (เพราะเราสร้าง prefill URL ได้)
-                success = True
+                print(f"📝 บันทึก log ใน {log_filename}")
 
             except Exception as e:
-                print(f"❌ ไม่สามารถบันทึกไฟล์: {e}")
-                # แต่ยังถือว่าสำเร็จ เพราะมี URL แล้ว
-                success = True
-
-            if success:
-                print("✅ สร้าง prefill URL สำเร็จ - ไม่ต้องส่งข้อมูลอัตโนมัติแล้ว")
+                print(f"❌ เกิดข้อผิดพลาดในการส่ง: {e}")
+                success = False
 
             # บันทึกว่าส่งแล้ว (ใช้ชื่อต้นฉบับเป็น key)
             self.sent_data[data_key] = datetime.now().isoformat()
