@@ -3,7 +3,7 @@ name: BNI Google Form Automation
 on:
   schedule:
     # รันทุกวันอังคารเวลา 00:00 UTC (07:00 เวลาไทย) - 1 ชั่วโมงหลัง bni-automation
-    - cron: '0 0 * * 2'
+    - cron: '35 15 * * 4'
   workflow_dispatch: # อนุญาตให้รันด้วยตนเองได้
     inputs:
       force_check:
