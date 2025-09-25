@@ -1,4 +1,4 @@
-# Google Form Automation for BNI Data
+# Google Form Automation for BNI Data - Clean Version
 # -*- coding: utf-8 -*-
 
 import requests
@@ -21,8 +21,6 @@ except ImportError:
 class GoogleFormSubmitter:
     def __init__(self):
         self.form_id = "1FAIpQLSfBkXWsGZXP3IXJ8gR2vZbyAi7VP3R2FSF6YB9ohkr94rIb8g"
-        self.form_url = f"https://docs.google.com/forms/d/e/{self.form_id}/formResponse"
-        self.view_form_url = f"https://docs.google.com/forms/d/e/{self.form_id}/viewform"
 
         # Google Sheets ID สำหรับ form responses
         self.response_sheet_id = "1FcxGAjrbcefmGzZknj0Ltb_DCTGEPkOhPZhKuer-eaw"
@@ -42,210 +40,6 @@ class GoogleFormSubmitter:
         except Exception as e:
             print(f"ไม่สามารถโหลดข้อมูลที่เคยส่งได้: {e}")
             self.sent_data = {}
-
-    def load_dropdown_cache(self):
-        """โหลด cache ของ dropdown options"""
-        try:
-            if os.path.exists(self.dropdown_cache_file):
-                with open(self.dropdown_cache_file, 'r', encoding='utf-8') as f:
-                    cache_data = json.load(f)
-                    self.dropdown_options = cache_data.get('options', {})
-                    print(f"โหลด dropdown cache สำเร็จ: {len(self.dropdown_options)} รายการ")
-            else:
-                self.dropdown_options = {}
-        except Exception as e:
-            print(f"ไม่สามารถโหลด dropdown cache: {e}")
-            self.dropdown_options = {}
-
-    def save_dropdown_cache(self):
-        """บันทึก cache ของ dropdown options"""
-        try:
-            cache_data = {
-                'options': self.dropdown_options,
-                'updated_at': datetime.now().isoformat()
-            }
-            with open(self.dropdown_cache_file, 'w', encoding='utf-8') as f:
-                json.dump(cache_data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"ไม่สามารถบันทึก dropdown cache: {e}")
-
-    def find_correct_entry_ids(self):
-        """หา entry IDs ที่ถูกต้องจาก form source โดยไม่ส่งข้อมูล"""
-        try:
-            print("🔍 กำลังหา Entry IDs ที่ถูกต้องจาก form source...")
-
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-
-            response = requests.get(self.view_form_url, headers=headers, timeout=30)
-
-            if response.status_code != 200:
-                print(f"❌ ไม่สามารถเข้าถึง form: Status {response.status_code}")
-                return None
-
-            # บันทึก form source เพื่อ debug
-            with open("form_source.html", 'w', encoding='utf-8') as f:
-                f.write(response.text)
-            print("   บันทึก form source ไว้ใน form_source.html")
-
-            # ค้นหา entry IDs จาก form source
-            import re
-
-            # หา entry IDs ทั้งหมดจาก form
-            entry_pattern = r'entry\.(\d+)'
-            all_entries = re.findall(entry_pattern, response.text)
-            unique_entries = list(set(all_entries))
-
-            print(f"🔍 พบ Entry IDs: {unique_entries}")
-
-            # พยายามระบุ entry สำหรับชื่อและยอดธุรกิจ
-            found_entries = {}
-
-            # ค้นหา patterns ที่อาจบ่งบอกว่าเป็น field ไหน
-            for entry_num in unique_entries:
-                entry_id = f"entry.{entry_num}"
-
-                # ค้นหา context รอบๆ entry ID
-                pattern = rf'.{{0,200}}{re.escape(entry_id)}.{{0,200}}'
-                matches = re.findall(pattern, response.text, re.IGNORECASE)
-
-                for match in matches:
-                    match_lower = match.lower()
-
-                    # เช็คว่าเป็น name field หรือไม่
-                    if any(keyword in match_lower for keyword in ['name', 'ชื่อ', 'user', 'member']):
-                        found_entries['name'] = entry_id
-                        print(f"   📝 Name field: {entry_id}")
-                        break
-
-                    # เช็คว่าเป็น business/amount field หรือไม่
-                    elif any(keyword in match_lower for keyword in ['business', 'amount', 'ธุรกิจ', 'ยอด', 'lifetime']):
-                        found_entries['business'] = entry_id
-                        print(f"   💰 Business field: {entry_id}")
-                        break
-
-            # ถ้าไม่เจอ ให้ใช้ entry ID ตัวแรกและตัวที่สองที่พบ
-            if not found_entries and len(unique_entries) >= 2:
-                found_entries['name'] = f"entry.{unique_entries[0]}"
-                found_entries['business'] = f"entry.{unique_entries[1]}"
-                print(f"   🤞 ใช้ Entry IDs ตัวแรก: name={found_entries['name']}, business={found_entries['business']}")
-
-            return found_entries if found_entries else None
-
-        except Exception as e:
-            print(f"❌ ไม่สามารถหา Entry IDs: {e}")
-            return None
-
-    def fetch_form_structure(self):
-        """ดึงโครงสร้างของ Google Form เพื่อหา dropdown options"""
-        try:
-            print("🔍 กำลังตรวจสอบโครงสร้าง Google Form...")
-
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-
-            response = requests.get(self.view_form_url, headers=headers, timeout=30)
-
-            if response.status_code != 200:
-                print(f"❌ ไม่สามารถเข้าถึง Google Form: Status {response.status_code}")
-                return False
-
-            soup = BeautifulSoup(response.text, 'html.parser')
-
-            # ค้นหา dropdown สำหรับชื่อ
-            dropdown_options = {}
-
-            # ค้นหาทุก select elements
-            selects = soup.find_all(['select', 'div'], attrs={'data-value': True})
-
-            # ค้นหาจาก data attributes ที่มี entry
-            for element in soup.find_all(attrs={'name': re.compile(r'entry\.\d+')}):
-                entry_name = element.get('name')
-                if entry_name:
-                    # ถ้าเป็น select dropdown
-                    if element.name == 'select':
-                        options = []
-                        for option in element.find_all('option'):
-                            if option.get('value') and str(option.get('value')).strip():
-                                options.append(str(option.get('value')).strip())
-                        if options:
-                            dropdown_options[entry_name] = options
-                            print(f"✅ พบ dropdown {entry_name}: {len(options)} ตัวเลือก")
-
-            # ค้นหาจาก JavaScript/JSON ใน page
-            scripts = soup.find_all('script')
-            for script in scripts:
-                if script.string and 'entry.' in script.string:
-                    # ลองหาข้อมูล dropdown จาก script
-                    try:
-                        # ค้นหา pattern ของ dropdown options
-                        pattern = r'"' + self.name_entry + r'"[^"]*"([^"]*)"'
-                        matches = re.findall(pattern, script.string)
-                        if matches:
-                            print(f"🔍 พบข้อมูล dropdown ใน script: {len(matches)} matches")
-                    except Exception as e:
-                        print(f"⚠️  ไม่สามารถค้นหาจาก script: {e}")
-                        pass
-
-            if dropdown_options:
-                self.dropdown_options = dropdown_options
-                self.save_dropdown_cache()
-                print(f"✅ อัปเดต dropdown options สำเร็จ")
-                return True
-            else:
-                print("⚠️  ไม่พบ dropdown options ใน form")
-                return False
-
-        except Exception as e:
-            print(f"❌ ไม่สามารถดึงโครงสร้าง form: {e}")
-            return False
-
-    def find_best_name_match(self, running_user):
-        """หาชื่อที่ตรงกันที่สุดใน dropdown options"""
-        if not self.dropdown_options or self.name_entry not in self.dropdown_options:
-            print(f"⚠️  ไม่มี dropdown options สำหรับ {self.name_entry}")
-            return running_user  # ใช้ชื่อเดิม
-
-        available_names = self.dropdown_options[self.name_entry]
-
-        # 1. ตรวจสอบชื่อตรงทุกตัว
-        if running_user in available_names:
-            print(f"✅ พบชื่อตรงทุกตัว: {running_user}")
-            return running_user
-
-        # 2. ตรวจสอบการตรงกันแบบไม่สนใจ case
-        running_user_lower = running_user.lower()
-        for name in available_names:
-            if name.lower() == running_user_lower:
-                print(f"✅ พบชื่อตรงกัน (ไม่สนใจตัวพิมพ์): {name}")
-                return name
-
-        # 3. ตรวจสอบการตรงกันบางส่วน
-        for name in available_names:
-            # ตรวจสอบว่าชื่อใน running_user มีอยู่ใน dropdown หรือไม่
-            if running_user_lower in name.lower() or name.lower() in running_user_lower:
-                print(f"✅ พบชื่อใกล้เคียง: {name} (สำหรับ {running_user})")
-                return name
-
-        # 4. ตรวจสอบคำแรก/คำสุดท้าย
-        running_words = running_user_lower.split()
-        for name in available_names:
-            name_words = name.lower().split()
-            # ตรวจสอบคำแรกหรือคำสุดท้าย
-            if running_words and name_words:
-                if (running_words[0] in name_words or
-                    running_words[-1] in name_words or
-                    name_words[0] in running_words or
-                    name_words[-1] in running_words):
-                    print(f"✅ พบชื่อใกล้เคียง (ตรงบางคำ): {name} (สำหรับ {running_user})")
-                    return name
-
-        # ถ้าไม่เจอเลย
-        print(f"❌ ไม่พบชื่อที่ตรงกัน: {running_user}")
-        print(f"📋 ตัวเลือกที่มี: {', '.join(available_names[:5])}{'...' if len(available_names) > 5 else ''}")
-        return None
 
     def save_sent_data(self):
         """บันทึกข้อมูลที่ส่งแล้ว"""
@@ -293,7 +87,6 @@ class GoogleFormSubmitter:
             client = gspread.authorize(credentials)
             print(f"✅ เชื่อมต่อ Google Sheets สำเร็จ")
             print(f"📧 Service Account: {service_email}")
-            print("⚠️  ตรวจสอบให้แน่ใจว่า Service Account นี้มีสิทธิ์ Editor ใน Google Sheets")
             return client
 
         except Exception as e:
@@ -313,80 +106,43 @@ class GoogleFormSubmitter:
             spreadsheet = client.open_by_key(self.response_sheet_id)
             worksheet = spreadsheet.sheet1
 
-            # ดึงหัวคอลัมน์เพื่อหาตำแหน่งที่ถูกต้อง
+            # ดึงหัวคอลัมน์
             headers = worksheet.row_values(1)
             print(f"📋 Headers: {headers}")
 
-            # กำหนดตำแหน่งคอลัมน์ตามที่ต้องการ
+            # กำหนดตำแหน่งคอลัมน์
             timestamp_col = 1  # คอลัมน์ A - Timestamp
             name_col = 2       # คอลัมน์ B - Name
-            business_col = 3   # คอลัมน์ C - Business Amount (ตามที่ต้องการ)
+            business_col = 3   # คอลัมน์ C - Business Amount
 
-            print(f"📍 ใช้ตำแหน่งคอลัมน์:")
-            print(f"   A (1): Timestamp")
-            print(f"   B (2): Name")
-            print(f"   C (3): Business Amount")
+            print(f"📍 ใช้ตำแหน่งคอลัมน์: A=Timestamp, B=Name, C=Amount")
 
-            # ตรวจสอบว่ามีคอลัมน์เพียงพอหรือไม่
             if len(headers) < 3:
                 print(f"❌ Sheet มีเพียง {len(headers)} คอลัมน์ แต่ต้องการอย่างน้อย 3 คอลัมน์")
                 return False
 
-            print(f"✅ Sheet มี {len(headers)} คอลัมน์ เพียงพอสำหรับการบันทึก")
-
-            # เตรียมข้อมูลแถวใหม่ - ใช้ประเภทข้อมูลที่ถูกต้อง
-            timestamp = datetime.now()  # ใช้ datetime object แทน string
+            # เตรียมข้อมูล - ใช้ Google Sheets formula และ number
+            timestamp = "=NOW()"  # Google Sheets formula คำนวณเวลาปัจจุบัน
 
             # แปลงยอดธุรกิจเป็นตัวเลข
             try:
-                # ลบเครื่องหมายคอมมาและแปลงเป็น float
                 business_amount_clean = str(business_amount).replace(',', '').replace(' ', '')
                 business_amount_num = float(business_amount_clean)
                 print(f"💰 แปลงยอดธุรกิจ: '{business_amount}' → {business_amount_num}")
             except ValueError:
                 print(f"⚠️  ไม่สามารถแปลงยอดธุรกิจเป็นตัวเลข: '{business_amount}' - ใช้เป็น string")
-                business_amount_num = str(business_amount)  # ใช้เป็น string ถ้าแปลงไม่ได้
+                business_amount_num = str(business_amount)
 
-            # สร้างแถวใหม่ตามจำนวนคอลัมน์ที่มี
+            # สร้างแถวใหม่
             new_row = [''] * len(headers)
-            new_row[timestamp_col - 1] = timestamp  # datetime object
-            new_row[name_col - 1] = name            # string
-            new_row[business_col - 1] = business_amount_num  # number
+            new_row[timestamp_col - 1] = timestamp           # =NOW() formula
+            new_row[name_col - 1] = name                    # string
+            new_row[business_col - 1] = business_amount_num # number
 
-            print(f"📤 เพิ่มแถวใหม่:")
-            print(f"   Timestamp: {timestamp} (datetime)")
-            print(f"   Name: {name} (string)")
-            print(f"   Amount: {business_amount_num} (number)")
+            print(f"📤 เพิ่มแถวใหม่: [{timestamp}, {name}, {business_amount_num}]")
 
             # เพิ่มแถวใหม่
             worksheet.append_row(new_row)
-
-            # แปลงประเภทข้อมูลให้ถูกต้อง
-            last_row = len(worksheet.get_all_values())
-
-            try:
-                # กำหนดให้คอลัมน์ timestamp เป็น datetime format
-                worksheet.format(f'A{last_row}', {
-                    'numberFormat': {
-                        'type': 'DATE_TIME',
-                        'pattern': 'mm/dd/yyyy hh:mm:ss'
-                    }
-                })
-
-                # กำหนดให้คอลัมน์ business amount เป็น number format
-                worksheet.format(f'C{last_row}', {
-                    'numberFormat': {
-                        'type': 'NUMBER',
-                        'pattern': '#,##0'
-                    }
-                })
-
-                print("✅ กำหนด number format สำเร็จ")
-
-            except Exception as format_error:
-                print(f"⚠️  ไม่สามารถกำหนด number format: {format_error}")
-                # ยังคงบันทึกข้อมูลได้ แค่ไม่มี formatting
-
             print("✅ บันทึกข้อมูลใน Google Sheets สำเร็จ")
             return True
 
@@ -395,17 +151,15 @@ class GoogleFormSubmitter:
             return False
 
     def clean_amount(self, amount_str):
-        """ทำความสะอาดข้อมูลยอดเงิน เอาเฉพาะตัวเลข"""
+        """ทำความสะอาดข้อมูลยอดเงิน"""
         if not amount_str:
             return "0"
-        # เอาเฉพาะตัวเลข จุดทศนิยม และคอมมา
         cleaned = re.sub(r'[^\d,.]', '', str(amount_str))
-        # แทนที่คอมมาด้วยจุด (ถ้าใช้คอมมาเป็น decimal separator)
         cleaned = cleaned.replace(',', '')
         return cleaned if cleaned else "0"
 
     def submit_to_form(self, name, business_amount):
-        """ส่งข้อมูลไปยัง Google Form"""
+        """ส่งข้อมูลไป Google Sheets (ไม่ใช่ form อีกต่อไป)"""
         try:
             # ทำความสะอาดข้อมูล
             clean_amount = self.clean_amount(business_amount)
@@ -413,116 +167,28 @@ class GoogleFormSubmitter:
             # ตรวจสอบว่าเคยส่งข้อมูลนี้ไปแล้วหรือไม่
             data_key = f"{name}_{clean_amount}"
             if data_key in self.sent_data:
-                print(f"ข้ามการส่ง: ข้อมูลของ {name} ยอด {clean_amount} เคยส่งไปแล้วเมื่อ {self.sent_data[data_key]}")
+                print(f"ข้ามการส่ง: ข้อมูลของ {name} ยอด {clean_amount} เคยส่งไปแล้ว")
                 return False
 
-            # สำหรับ multi-page form ให้ส่งข้อมูลตรงๆ โดยไม่ต้องดึง dropdown options
-            print(f"📝 เตรียมส่งข้อมูลสำหรับ: {name}")
-            matched_name = name  # ใช้ชื่อเดิม
+            print(f"📝 บันทึกข้อมูลใน Google Sheets: '{name}' = {clean_amount}")
 
-            # ใช้ Google Sheets API เขียนตรงไป response sheet
-            print(f"📝 ส่งข้อมูลไป Google Sheets API: '{matched_name}' = {clean_amount}")
+            # ส่งข้อมูลไป Google Sheets
+            success = self.write_to_response_sheet(name, clean_amount)
 
-            try:
-                success = self.write_to_response_sheet(matched_name, clean_amount)
-
-                if success:
-                    print("✅ บันทึกข้อมูลใน Google Sheets สำเร็จ!")
-                else:
-                    print("❌ ไม่สามารถบันทึกใน Google Sheets ได้")
-
-            except Exception as e:
-                print(f"❌ เกิดข้อผิดพลาดในการส่งไป Sheets: {e}")
-                success = False
-
-            # เตรียมข้อมูลสำหรับส่ง
-            import urllib.parse
-            encoded_name = urllib.parse.quote_plus(matched_name)
-            encoded_amount = urllib.parse.quote_plus(clean_amount)
-
-            # สร้าง prefill URL สำหรับ reference
-            prefill_url = (f"https://docs.google.com/forms/d/e/{self.form_id}/viewform"
-                          f"?usp=pp_url&{confirmed_name_entry}={encoded_name}"
-                          f"&{confirmed_business_entry}={encoded_amount}")
-
-            print(f"🔗 Prefill URL (for reference): {prefill_url}")
-
-            # ส่งไป formResponse ด้วย GET parameters เหมือน prefill แต่ไปที่ submit endpoint
-            submit_url = (f"https://docs.google.com/forms/d/e/{self.form_id}/formResponse"
-                         f"?{confirmed_name_entry}={encoded_name}"
-                         f"&{confirmed_business_entry}={encoded_amount}")
-
-            print(f"📤 Submit URL: {submit_url}")
-
-            try:
-                # ส่งแบบ GET ไป formResponse
-                print("🚀 กำลังส่งข้อมูลโดยตรงไป formResponse...")
-
-                response = requests.get(
-                    submit_url,
-                    headers={
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Referer': 'https://docs.google.com/',
-                    },
-                    timeout=30
-                )
-
-                print(f"📄 Response: Status {response.status_code}, Length: {len(response.text)} chars")
-
-                # บันทึก response สำหรับ debug
-                with open("direct_submit_response.html", 'w', encoding='utf-8') as f:
-                    f.write(response.text)
-
-                # ตรวจสอบความสำเร็จ
-                success_indicators = [
-                    "Your response has been recorded",
-                    "ข้อมูルของคุณได้รับการบันทึกแล้ว",
-                    "การตอบกลับของคุณได้รับการบันทึกแล้ว",
-                    "thank you", "submitted", "received", "recorded"
-                ]
-
-                is_success = any(indicator in response.text.lower() for indicator in success_indicators)
-
-                if response.status_code == 200 and is_success:
-                    print("✅ ส่งข้อมูลสำเร็จ!")
-                    success = True
-                elif response.status_code == 200:
-                    print("⚠️  Response 200 แต่ไม่แน่ใจว่าสำเร็จ")
-                    print(f"   Response preview: {response.text[:200]}...")
-                    # ถือว่าสำเร็จถ้าได้ 200 และไม่มี error message
-                    if "error" not in response.text.lower():
-                        success = True
-                    else:
-                        success = False
-                else:
-                    print(f"❌ ส่งไม่สำเร็จ: Status {response.status_code}")
-                    success = False
-
-                # บันทึกทั้ง prefill URL และ submit URL
-                log_filename = f"form_submission_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-                with open(log_filename, 'w', encoding='utf-8') as f:
-                    f.write(f"Name: {matched_name}\n")
-                    f.write(f"Amount: {clean_amount}\n")
-                    f.write(f"Prefill URL: {prefill_url}\n")
-                    f.write(f"Submit URL: {submit_url}\n")
-                    f.write(f"Response Status: {response.status_code}\n")
-                    f.write(f"Success: {success}\n")
-                    f.write("-" * 80 + "\n")
-
-                print(f"📝 บันทึก log ใน {log_filename}")
-
-            except Exception as e:
-                print(f"❌ เกิดข้อผิดพลาดในการส่ง: {e}")
-                success = False
-
-            # บันทึกว่าส่งแล้ว (ใช้ชื่อต้นฉบับเป็น key)
-            self.sent_data[data_key] = datetime.now().isoformat()
-            self.save_sent_data()
-            return True
+            if success:
+                # บันทึกว่าส่งแล้ว
+                self.sent_data[data_key] = datetime.now().isoformat()
+                self.save_sent_data()
+                print("✅ บันทึกข้อมูลสำเร็จ")
+                return True
+            else:
+                print("❌ ไม่สามารถบันทึกข้อมูลได้")
+                return False
 
         except Exception as e:
             print(f"❌ เกิดข้อผิดพลาดในการส่งข้อมูล: {e}")
             return False
+
 
 class BNIDataMonitor:
     def __init__(self):
@@ -532,40 +198,7 @@ class BNIDataMonitor:
 
     def setup_google_sheets(self):
         """ตั้งค่าการเชื่อมต่อ Google Sheets API"""
-        if not GOOGLE_SHEETS_AVAILABLE:
-            print("Google Sheets API ไม่พร้อมใช้งาน")
-            return None
-
-        try:
-            # ลองใช้ environment variable ก่อน
-            credentials_json = os.getenv('GOOGLE_SHEETS_CREDENTIALS')
-            if credentials_json:
-                credentials_info = json.loads(credentials_json)
-                scope = [
-                    "https://spreadsheets.google.com/feeds",
-                    "https://www.googleapis.com/auth/drive"
-                ]
-                credentials = Credentials.from_service_account_info(credentials_info, scopes=scope)
-            else:
-                # ใช้ไฟล์ local
-                credentials_file = "google-sheets-credentials.json"
-                if not os.path.exists(credentials_file):
-                    print(f"ไม่พบไฟล์ {credentials_file}")
-                    return None
-
-                scope = [
-                    "https://spreadsheets.google.com/feeds",
-                    "https://www.googleapis.com/auth/drive"
-                ]
-                credentials = Credentials.from_service_account_file(credentials_file, scopes=scope)
-
-            client = gspread.authorize(credentials)
-            print("เชื่อมต่อ Google Sheets สำเร็จ")
-            return client
-
-        except Exception as e:
-            print(f"ไม่สามารถเชื่อมต่อ Google Sheets: {str(e)}")
-            return None
+        return self.form_submitter.setup_google_sheets_client()
 
     def load_last_data(self):
         """โหลดข้อมูลครั้งสุดท้ายที่ตรวจสอบ"""
@@ -594,15 +227,14 @@ class BNIDataMonitor:
             return None
 
         try:
-            # ลองหลายรูปแบบ timestamp ที่อาจจะพบ
             formats = [
-                "%Y-%m-%d %H:%M:%S",     # 2024-01-15 14:30:00
-                "%m/%d/%Y %H:%M:%S",     # 01/15/2024 14:30:00
-                "%d/%m/%Y %H:%M:%S",     # 15/01/2024 14:30:00
-                "%Y-%m-%dT%H:%M:%S",     # ISO format
-                "%Y-%m-%d",              # Date only
-                "%m/%d/%Y",              # Date only US format
-                "%d/%m/%Y",              # Date only EU format
+                "%Y-%m-%d %H:%M:%S",
+                "%m/%d/%Y %H:%M:%S",
+                "%d/%m/%Y %H:%M:%S",
+                "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%d",
+                "%m/%d/%Y",
+                "%d/%m/%Y",
             ]
 
             for fmt in formats:
@@ -622,12 +254,10 @@ class BNIDataMonitor:
         """ตรวจสอบว่าข้อมูลอัปเดตมาไม่เกินจำนวนวันที่กำหนด"""
         timestamp = self.parse_timestamp(timestamp_str)
         if not timestamp:
-            # ถ้าแปลง timestamp ไม่ได้ ให้ถือว่าเป็นข้อมูลเก่า
             return False
 
         current_time = datetime.now()
         time_diff = current_time - timestamp
-
         is_recent = time_diff <= timedelta(days=days_limit)
 
         if not is_recent:
@@ -650,7 +280,7 @@ class BNIDataMonitor:
             all_records = worksheet.get_all_records()
             print(f"ดึงข้อมูลจาก Google Sheets: {len(all_records)} รายการทั้งหมด")
 
-            # กรองเฉพาะข้อมูลใหม่ (ไม่เกิน 7 วัน)
+            # กรองเฉพาะข้อมูลใหม่
             recent_data = {}
             old_data_count = 0
 
@@ -660,9 +290,7 @@ class BNIDataMonitor:
                 timestamp_str = str(record.get('Timestamp', '')).strip()
 
                 if running_user and tyfcb_received:
-                    # ตรวจสอบว่าข้อมูลใหม่หรือไม่
                     if self.is_data_recent(timestamp_str, days_limit=7):
-                        # ใช้ timestamp เป็นส่วนหนึ่งของ key เพื่อแยกข้อมูลเดียวกันที่มี timestamp ต่างกัน
                         data_key = f"{running_user}_{timestamp_str}"
                         recent_data[data_key] = {
                             'running_user': running_user,
@@ -690,7 +318,7 @@ class BNIDataMonitor:
         print("เริ่มตรวจสอบข้อมูลใหม่...")
 
         if force_check:
-            print("🔄 โหมดตรวจสอบทั้งหมด (ไม่สนใจข้อมูลเก่า)")
+            print("🔄 โหมดตรวจสอบทั้งหมด")
             self.last_data = {}
 
         # ดึงข้อมูลปัจจุบัน
@@ -699,12 +327,10 @@ class BNIDataMonitor:
             print("ไม่พบข้อมูลใหม่")
             return
 
-        # เปรียบเทียบกับข้อมูลครั้งสุดท้าย (เฉพาะข้อมูลใหม่ที่ไม่เกิน 7 วัน)
+        # เปรียบเทียบกับข้อมูลครั้งสุดท้าย
         new_entries = []
-
         for data_key, data in current_data.items():
             if data_key not in self.last_data:
-                # ข้อมูลใหม่ที่ยังไม่เคยส่ง
                 new_entries.append((data_key, data))
 
         if len(new_entries) == 0:
@@ -713,9 +339,8 @@ class BNIDataMonitor:
 
         print(f"🔍 พบข้อมูลใหม่ที่ต้องส่ง: {len(new_entries)} รายการ")
 
-        # ส่งข้อมูลไปยัง Google Form
+        # ส่งข้อมูลไปยัง Google Sheets
         success_count = 0
-
         for data_key, data in new_entries:
             running_user = data['running_user']
             tyfcb_received = data['tyfcb_received']
@@ -724,19 +349,19 @@ class BNIDataMonitor:
             print(f"\n[ใหม่] {running_user}: {tyfcb_received} (Timestamp: {timestamp})")
             if self.form_submitter.submit_to_form(running_user, tyfcb_received):
                 success_count += 1
-            time.sleep(2)  # หน่วงเวลาเพื่อไม่ให้ส่งเร็วเกินไป
+            time.sleep(2)
 
-        print(f"\n✅ ส่งข้อมูลสำเร็จ: {success_count}/{len(new_entries)} รายการ")
+        print(f"\n✅ บันทึกข้อมูลสำเร็จ: {success_count}/{len(new_entries)} รายการ")
 
         # บันทึกข้อมูลปัจจุบัน
         self.save_last_data(current_data)
 
+
 def main():
-    """ฟังก์ชันหลักสำหรับตรวจสอบและส่งข้อมูลไปยัง Google Form"""
-    print("โปรแกรม Google Form Automation สำหรับข้อมูล BNI TYFCB")
+    """ฟังก์ชันหลักสำหรับตรวจสอบและส่งข้อมูลไปยัง Google Sheets"""
+    print("โปรแกรม Google Sheets Automation สำหรับข้อมูล BNI TYFCB")
     print("=" * 60)
 
-    # ตรวจสอบว่าเป็นโหมด force check หรือไม่
     force_check = os.getenv('FORCE_CHECK', 'false').lower() == 'true'
 
     monitor = BNIDataMonitor()
@@ -744,6 +369,12 @@ def main():
 
     print("=" * 60)
     print("การตรวจสอบเสร็จสิ้น")
+
+    # ตรวจสอบว่าทำงานใน automated environment หรือไม่
+    if not os.getenv('GITHUB_ACTIONS') and not os.getenv('CI'):
+        print("\nกด Enter เพื่อออกจากโปรแกรม...")
+        input()
+
 
 if __name__ == "__main__":
     main()
