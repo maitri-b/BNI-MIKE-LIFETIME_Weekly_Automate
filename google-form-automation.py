@@ -271,6 +271,7 @@ class GoogleFormSubmitter:
                     "https://www.googleapis.com/auth/drive"
                 ]
                 credentials = Credentials.from_service_account_info(credentials_info, scopes=scope)
+                service_email = credentials_info.get('client_email', 'ไม่พบ email')
             else:
                 # ใช้ไฟล์ local
                 credentials_file = "google-sheets-credentials.json"
@@ -284,8 +285,15 @@ class GoogleFormSubmitter:
                 ]
                 credentials = Credentials.from_service_account_file(credentials_file, scopes=scope)
 
+                # อ่าน service email จากไฟล์
+                with open(credentials_file, 'r') as f:
+                    creds_data = json.load(f)
+                    service_email = creds_data.get('client_email', 'ไม่พบ email')
+
             client = gspread.authorize(credentials)
-            print("เชื่อมต่อ Google Sheets สำเร็จ")
+            print(f"✅ เชื่อมต่อ Google Sheets สำเร็จ")
+            print(f"📧 Service Account: {service_email}")
+            print("⚠️  ตรวจสอบให้แน่ใจว่า Service Account นี้มีสิทธิ์ Editor ใน Google Sheets")
             return client
 
         except Exception as e:
