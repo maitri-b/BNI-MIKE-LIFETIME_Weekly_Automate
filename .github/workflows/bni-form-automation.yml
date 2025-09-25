@@ -1,0 +1,141 @@
+name: BNI Form Automation - Scrape TYFCB and Submit to Google Form
+
+on:
+  schedule:
+    # รันทุกวันศุกร์ เวลา 17:01 น. (UTC) = 00:01 น. วันเสาร์ เวลาไทย (เที่ยงคืน 1 นาที)
+    - cron: '1 17 * * FRI'
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Force run automation (true/false)'
+        required: false
+        default: 'true'
+        type: boolean
+
+env:
+  PYTHONIOENCODING: utf-8
+  PYTHONUNBUFFERED: 1
+
+jobs:
+  bni-form-automation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          wget \
+          gnupg \
+          software-properties-common \
+          apt-transport-https \
+          ca-certificates \
+          curl
+
+    - name: Install Google Chrome
+      run: |
+        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install selenium webdriver-manager gspread google-auth requests beautifulsoup4
+
+    - name: Create Google Sheets credentials file
+      if: env.GOOGLE_SHEETS_CREDENTIALS != ''
+      env:
+        GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
+      run: |
+        echo "Creating credentials file..."
+        echo '${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}' > google-sheets-credentials.json
+        ls -la google-sheets-credentials.json
+
+    - name: Run BNI Form Automation
+      env:
+        BNI_USERNAME: ${{ secrets.BNI_USERNAME }}
+        BNI_PASSWORD: ${{ secrets.BNI_PASSWORD }}
+        GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
+        GITHUB_ACTIONS: true
+        CI: true
+        DISPLAY: :99
+        FORCE_RUN: ${{ github.event.inputs.force_run || 'true' }}
+      run: |
+        echo "🤖 เริ่มต้น BNI Form Automation - Friday Midnight Run..."
+        echo "📅 เวลาปัจจุบัน (UTC): $(date -u)"
+        echo "🌏 เวลาปัจจุบัน (Asia/Bangkok): $(TZ='Asia/Bangkok' date)"
+        echo "🕛 กำหนดการรัน: ทุกวันศุกร์ เที่ยงคืน 1 นาที (เวลาไทย)"
+        echo "👤 Username: $BNI_USERNAME"
+        echo "🔐 Password: [HIDDEN]"
+        echo "🚀 Force Run: $FORCE_RUN"
+
+        # สร้าง virtual display สำหรับ headless browser
+        export DISPLAY=:99
+        Xvfb :99 -screen 0 1920x1080x24 &
+
+        # รัน automation script
+        python bni-integrated-automation.py
+
+    - name: Upload screenshots on failure
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: automation-screenshots-${{ github.run_number }}
+        path: |
+          *.png
+          *.jpg
+          *.jpeg
+        retention-days: 7
+
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: automation-logs-${{ github.run_number }}
+        path: |
+          *.log
+          *.txt
+        retention-days: 3
+
+    - name: Cleanup temporary files
+      if: always()
+      run: |
+        rm -f google-sheets-credentials.json
+        rm -f *.png *.jpg *.jpeg
+        rm -f chromedriver*
+
+    - name: Report status
+      if: always()
+      run: |
+        if [ "${{ job.status }}" = "success" ]; then
+          echo "✅ BNI Form Automation completed successfully!"
+          echo "📝 TYFCB data has been scraped and submitted to Google Form"
+        else
+          echo "❌ BNI Form Automation failed"
+          echo "🔍 Check logs and screenshots for debugging"
+        fi
+
+        echo "📊 Job Summary:"
+        echo "- Status: ${{ job.status }}"
+        echo "- Run Number: ${{ github.run_number }}"
+        echo "- Workflow: ${{ github.workflow }}"
+        echo "- Event: ${{ github.event_name }}"
