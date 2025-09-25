@@ -1,9 +1,9 @@
 name: BNI TYFCB Data Automation
 
 on:
-  schedule:
+  # schedule: # Disabled automatic scheduling - use manual trigger only
     # รันทุกวันอังคารเวลา 23:00 UTC (06:00 เวลาไทย)
-    - cron: '25 15 * * 4'
+    # - cron: '25 15 * * 4'
   workflow_dispatch: # อนุญาตให้รันด้วยตนเองได้
 
 jobs:
