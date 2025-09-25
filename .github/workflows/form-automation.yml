@@ -47,11 +47,12 @@ jobs:
         # รัน script automation
         python google-form-automation.py
 
-    - name: Save state for next run
+    - name: Upload prefill URLs and state files
       uses: actions/upload-artifact@v4
       with:
-        name: automation-state
+        name: prefill-urls-and-state
         path: |
+          prefill_urls_*.txt
           last_bni_data.json
           sent_form_data.json
         retention-days: 30
