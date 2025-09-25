@@ -197,7 +197,7 @@ class GoogleFormSubmitter:
 
             if success:
                 # บันทึกว่าส่งแล้ว
-                self.sent_data[data_key] = datetime.now().isoformat()
+                self.sent_data[data_key] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.save_sent_data()
                 print("✅ บันทึกข้อมูลสำเร็จ")
                 return True
