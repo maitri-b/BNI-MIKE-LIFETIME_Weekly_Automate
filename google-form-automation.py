@@ -24,25 +24,12 @@ class GoogleFormSubmitter:
         self.form_url = f"https://docs.google.com/forms/d/e/{self.form_id}/formResponse"
         self.view_form_url = f"https://docs.google.com/forms/d/e/{self.form_id}/viewform"
 
-        # Entry IDs (จะถูกอัปเดตจากการตรวจสอบ form จริง)
-        # สำหรับ multi-page form อาจต้องใช้ entry ID ที่แตกต่าง
-        self.name_entry = "entry.683444359"  # ชื่อ (dropdown)
-        self.business_entry = "entry.290745485"  # ยอดธุรกิจ Lifetime
-
-        # Alternative entry IDs ที่อาจใช้ได้ใน multi-page form
-        self.alt_entries = {
-            'name': ['entry.683444359', 'entry.1683444359', 'entry.83444359', 'entry.2083123743'],
-            'business': ['entry.290745485', 'entry.1290745485', 'entry.90745485', 'entry.1797967953']
-        }
-
-        # Cache สำหรับ dropdown options
-        self.dropdown_options = {}
-        self.dropdown_cache_file = "dropdown_cache.json"
+        # Google Sheets ID สำหรับ form responses
+        self.response_sheet_id = "1FcxGAjrbcefmGzZknj0Ltb_DCTGEPkOhPZhKuer-eaw"
 
         # ข้อมูลที่เคยส่งไปแล้ว (เพื่อป้องกันการส่งซ้ำ)
         self.sent_data_file = "sent_form_data.json"
         self.load_sent_data()
-        self.load_dropdown_cache()
 
     def load_sent_data(self):
         """โหลดข้อมูลที่เคยส่งไปแล้ว"""
@@ -268,6 +255,99 @@ class GoogleFormSubmitter:
         except Exception as e:
             print(f"ไม่สามารถบันทึกข้อมูลที่ส่งแล้ว: {e}")
 
+    def setup_google_sheets_client(self):
+        """ตั้งค่าการเชื่อมต่อ Google Sheets API"""
+        if not GOOGLE_SHEETS_AVAILABLE:
+            print("Google Sheets API ไม่พร้อมใช้งาน")
+            return None
+
+        try:
+            # ลองใช้ environment variable ก่อน
+            credentials_json = os.getenv('GOOGLE_SHEETS_CREDENTIALS')
+            if credentials_json:
+                credentials_info = json.loads(credentials_json)
+                scope = [
+                    "https://spreadsheets.google.com/feeds",
+                    "https://www.googleapis.com/auth/drive"
+                ]
+                credentials = Credentials.from_service_account_info(credentials_info, scopes=scope)
+            else:
+                # ใช้ไฟล์ local
+                credentials_file = "google-sheets-credentials.json"
+                if not os.path.exists(credentials_file):
+                    print(f"ไม่พบไฟล์ {credentials_file}")
+                    return None
+
+                scope = [
+                    "https://spreadsheets.google.com/feeds",
+                    "https://www.googleapis.com/auth/drive"
+                ]
+                credentials = Credentials.from_service_account_file(credentials_file, scopes=scope)
+
+            client = gspread.authorize(credentials)
+            print("เชื่อมต่อ Google Sheets สำเร็จ")
+            return client
+
+        except Exception as e:
+            print(f"ไม่สามารถเชื่อมต่อ Google Sheets: {str(e)}")
+            return None
+
+    def write_to_response_sheet(self, name, business_amount):
+        """เขียนข้อมูลตรงไป Google Sheets response sheet"""
+        try:
+            print(f"🔗 เชื่อมต่อ Google Sheets...")
+            client = self.setup_google_sheets_client()
+            if not client:
+                return False
+
+            # เปิด response sheet
+            print(f"📄 เปิด response sheet ID: {self.response_sheet_id}")
+            spreadsheet = client.open_by_key(self.response_sheet_id)
+            worksheet = spreadsheet.sheet1
+
+            # ดึงหัวคอลัมน์เพื่อหาตำแหน่งที่ถูกต้อง
+            headers = worksheet.row_values(1)
+            print(f"📋 Headers: {headers}")
+
+            # หาตำแหน่งคอลัมน์
+            timestamp_col = 1  # คอลัมน์แรกมักเป็น timestamp
+            name_col = None
+            business_col = None
+
+            for i, header in enumerate(headers, 1):
+                header_lower = header.lower()
+                if any(keyword in header_lower for keyword in ['name', 'ชื่อ', 'user', 'member']):
+                    name_col = i
+                    print(f"📝 พบคอลัมน์ชื่อ: {header} (คอลัมน์ {i})")
+                elif any(keyword in header_lower for keyword in ['business', 'amount', 'ธุรกิจ', 'ยอด', 'lifetime']):
+                    business_col = i
+                    print(f"💰 พบคอลัมน์ยอดธุรกิจ: {header} (คอลัมน์ {i})")
+
+            if not name_col or not business_col:
+                print("❌ ไม่พบคอลัมน์ที่ต้องการในหัวข้อ")
+                return False
+
+            # เตรียมข้อมูลแถวใหม่
+            timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+
+            # สร้างแถวใหม่ตามจำนวนคอลัมน์ที่มี
+            new_row = [''] * len(headers)
+            new_row[timestamp_col - 1] = timestamp
+            new_row[name_col - 1] = name
+            new_row[business_col - 1] = business_amount
+
+            print(f"📤 เพิ่มแถวใหม่: {new_row}")
+
+            # เพิ่มแถวใหม่
+            worksheet.append_row(new_row)
+
+            print("✅ บันทึกข้อมูลใน Google Sheets สำเร็จ")
+            return True
+
+        except Exception as e:
+            print(f"❌ เกิดข้อผิดพลาดในการเขียน Google Sheets: {e}")
+            return False
+
     def clean_amount(self, amount_str):
         """ทำความสะอาดข้อมูลยอดเงิน เอาเฉพาะตัวเลข"""
         if not amount_str:
@@ -294,11 +374,20 @@ class GoogleFormSubmitter:
             print(f"📝 เตรียมส่งข้อมูลสำหรับ: {name}")
             matched_name = name  # ใช้ชื่อเดิม
 
-            # ใช้ prefill parameters แต่ส่งไป formResponse โดยตรง
-            confirmed_name_entry = "entry.683444359"
-            confirmed_business_entry = "entry.290745485"
+            # ใช้ Google Sheets API เขียนตรงไป response sheet
+            print(f"📝 ส่งข้อมูลไป Google Sheets API: '{matched_name}' = {clean_amount}")
 
-            print(f"📝 ส่งข้อมูลด้วย prefill parameters: '{matched_name}' = {clean_amount}")
+            try:
+                success = self.write_to_response_sheet(matched_name, clean_amount)
+
+                if success:
+                    print("✅ บันทึกข้อมูลใน Google Sheets สำเร็จ!")
+                else:
+                    print("❌ ไม่สามารถบันทึกใน Google Sheets ได้")
+
+            except Exception as e:
+                print(f"❌ เกิดข้อผิดพลาดในการส่งไป Sheets: {e}")
+                success = False
 
             # เตรียมข้อมูลสำหรับส่ง
             import urllib.parse
