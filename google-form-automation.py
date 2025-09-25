@@ -82,6 +82,74 @@ class GoogleFormSubmitter:
         except Exception as e:
             print(f"ไม่สามารถบันทึก dropdown cache: {e}")
 
+    def find_correct_entry_ids(self):
+        """หา entry IDs ที่ถูกต้องจาก form source โดยไม่ส่งข้อมูล"""
+        try:
+            print("🔍 กำลังหา Entry IDs ที่ถูกต้องจาก form source...")
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+
+            response = requests.get(self.view_form_url, headers=headers, timeout=30)
+
+            if response.status_code != 200:
+                print(f"❌ ไม่สามารถเข้าถึง form: Status {response.status_code}")
+                return None
+
+            # บันทึก form source เพื่อ debug
+            with open("form_source.html", 'w', encoding='utf-8') as f:
+                f.write(response.text)
+            print("   บันทึก form source ไว้ใน form_source.html")
+
+            # ค้นหา entry IDs จาก form source
+            import re
+
+            # หา entry IDs ทั้งหมดจาก form
+            entry_pattern = r'entry\.(\d+)'
+            all_entries = re.findall(entry_pattern, response.text)
+            unique_entries = list(set(all_entries))
+
+            print(f"🔍 พบ Entry IDs: {unique_entries}")
+
+            # พยายามระบุ entry สำหรับชื่อและยอดธุรกิจ
+            found_entries = {}
+
+            # ค้นหา patterns ที่อาจบ่งบอกว่าเป็น field ไหน
+            for entry_num in unique_entries:
+                entry_id = f"entry.{entry_num}"
+
+                # ค้นหา context รอบๆ entry ID
+                pattern = rf'.{{0,200}}{re.escape(entry_id)}.{{0,200}}'
+                matches = re.findall(pattern, response.text, re.IGNORECASE)
+
+                for match in matches:
+                    match_lower = match.lower()
+
+                    # เช็คว่าเป็น name field หรือไม่
+                    if any(keyword in match_lower for keyword in ['name', 'ชื่อ', 'user', 'member']):
+                        found_entries['name'] = entry_id
+                        print(f"   📝 Name field: {entry_id}")
+                        break
+
+                    # เช็คว่าเป็น business/amount field หรือไม่
+                    elif any(keyword in match_lower for keyword in ['business', 'amount', 'ธุรกิจ', 'ยอด', 'lifetime']):
+                        found_entries['business'] = entry_id
+                        print(f"   💰 Business field: {entry_id}")
+                        break
+
+            # ถ้าไม่เจอ ให้ใช้ entry ID ตัวแรกและตัวที่สองที่พบ
+            if not found_entries and len(unique_entries) >= 2:
+                found_entries['name'] = f"entry.{unique_entries[0]}"
+                found_entries['business'] = f"entry.{unique_entries[1]}"
+                print(f"   🤞 ใช้ Entry IDs ตัวแรก: name={found_entries['name']}, business={found_entries['business']}")
+
+            return found_entries if found_entries else None
+
+        except Exception as e:
+            print(f"❌ ไม่สามารถหา Entry IDs: {e}")
+            return None
+
     def fetch_form_structure(self):
         """ดึงโครงสร้างของ Google Form เพื่อหา dropdown options"""
         try:
@@ -226,86 +294,72 @@ class GoogleFormSubmitter:
             print(f"📝 เตรียมส่งข้อมูลสำหรับ: {name}")
             matched_name = name  # ใช้ชื่อเดิม
 
-            # ลองส่งด้วย entry IDs หลายตัวสำหรับ multi-page form
-            success = False
+            # หาค่า entry IDs ที่ถูกต้องจาก form source แทนการทดลองส่ง
+            correct_entries = self.find_correct_entry_ids()
+            if correct_entries:
+                self.name_entry = correct_entries['name']
+                self.business_entry = correct_entries['business']
+                print(f"✅ ใช้ Entry IDs: {self.name_entry}, {self.business_entry}")
+            else:
+                print("⚠️  ไม่พบ Entry IDs ที่ถูกต้อง - ใช้ค่าเริ่มต้น")
 
-            # ลองทั้งหมด combination ของ entry IDs
-            for name_entry in self.alt_entries['name']:
-                for business_entry in self.alt_entries['business']:
-                    form_data = {
-                        name_entry: matched_name,
-                        business_entry: clean_amount
-                    }
+            # เตรียมข้อมูลสำหรับส่ง
+            form_data = {
+                self.name_entry: matched_name,
+                self.business_entry: clean_amount
+            }
 
-                    # Debug: แสดงข้อมูลที่จะส่ง
-                    print(f"🔧 ทดลองส่งด้วย Entry IDs: {name_entry}, {business_entry}")
-                    print(f"   {name_entry}: '{matched_name}'")
-                    print(f"   {business_entry}: '{clean_amount}'")
+            # Debug: แสดงข้อมูลที่จะส่ง
+            print(f"🔧 Form Data:")
+            print(f"   {self.name_entry}: '{matched_name}'")
+            print(f"   {self.business_entry}: '{clean_amount}'")
 
-                    # ส่งข้อมูล - ลองทั้ง POST และ GET
-                    print(f"📤 กำลังส่งข้อมูล: '{matched_name}' = {clean_amount}")
+            # ส่งข้อมูล
+            print(f"📤 กำลังส่งข้อมูล: '{matched_name}' = {clean_amount}")
 
-                    try:
-                        # ลองส่งแบบ POST ก่อน
-                        response = requests.post(
-                            self.form_url,
-                            data=form_data,
-                            headers={
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                                'Content-Type': 'application/x-www-form-urlencoded'
-                            },
-                            timeout=30
-                        )
+            try:
+                response = requests.post(
+                    self.form_url,
+                    data=form_data,
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    timeout=30
+                )
 
-                        # ถ้า POST ไม่ได้ผล ลองส่งแบบ GET
-                        if response.status_code != 200 or "thank" not in response.text.lower():
-                            print(f"   ลอง GET method...")
-                            get_url = self.form_url + "?" + "&".join([f"{k}={requests.utils.quote(str(v))}" for k, v in form_data.items()])
-                            response = requests.get(get_url, timeout=30)
+                if response.status_code == 200:
+                    print(f"📄 Response: Status {response.status_code}, Length: {len(response.text)} chars")
 
-                        if response.status_code == 200:
-                            # Debug: แสดง response content มากขึ้น
-                            print(f"📄 Response content preview:")
-                            print(f"   Length: {len(response.text)} chars")
-                            print(f"   First 300 chars: {response.text[:300]}")
-                            print(f"   Contains 'recorded': {'recorded' in response.text.lower()}")
-                            print(f"   Contains 'submitted': {'submitted' in response.text.lower()}")
-                            print(f"   Contains 'thank': {'thank' in response.text.lower()}")
+                    # บันทึก response เพื่อ debug
+                    with open("last_form_response.html", 'w', encoding='utf-8') as f:
+                        f.write(response.text)
+                    print("   บันทึก response ไว้ใน last_form_response.html")
 
-                            # ตรวจสอบว่าส่งสำเร็จจริงหรือไม่ - ใช้เงื่อนไขหลวมขึ้น
-                            success_indicators = [
-                                "Your response has been recorded",
-                                "ข้อมูลของคุณได้รับการบันทึกแล้ว",
-                                "การตอบกลับของคุณได้รับการบันทึกแล้ว",
-                                "thank you", "submitted", "received",
-                                response.status_code == 200 and len(response.text) < 1000  # Short response often means success
-                            ]
+                    # ตรวจสอบความสำเร็จ
+                    success_indicators = [
+                        "Your response has been recorded",
+                        "ข้อมูลของคุณได้รับการบันทึกแล้ว",
+                        "การตอบกลับของคุณได้รับการบันทึกแล้ว",
+                        "thank you", "submitted", "received"
+                    ]
 
-                            if any(indicator in response.text.lower() if isinstance(indicator, str) else indicator for indicator in success_indicators):
-                                print(f"✅ ถือว่าส่งสำเร็จด้วย Entry IDs: {name_entry}, {business_entry}")
-                                success = True
-                                # บันทึก entry IDs ที่ใช้งานได้
-                                self.name_entry = name_entry
-                                self.business_entry = business_entry
-                                break
-                            else:
-                                print(f"⚠️  Response 200 แต่ไม่มี success indicator")
-                                # บันทึก response เพื่อ debug
-                                with open(f"form_response_{name_entry}_{business_entry}.html", 'w', encoding='utf-8') as f:
-                                    f.write(response.text)
-                                print(f"   บันทึก response ไว้ใน form_response_{name_entry}_{business_entry}.html")
-                        else:
-                            print(f"❌ Status {response.status_code} สำหรับ {name_entry}, {business_entry}")
+                    if any(indicator in response.text.lower() for indicator in success_indicators):
+                        print("✅ ส่งข้อมูลสำเร็จ")
+                        success = True
+                    else:
+                        print("⚠️  ไม่แน่ใจว่าส่งสำเร็จ - ตรวจสอบ response file")
+                        success = False
+                else:
+                    print(f"❌ ส่งไม่สำเร็จ: Status {response.status_code}")
+                    success = False
 
-                    except Exception as e:
-                        print(f"❌ Error สำหรับ {name_entry}, {business_entry}: {e}")
-                        continue
-
-                if success:
-                    break
+            except Exception as e:
+                print(f"❌ เกิดข้อผิดพลาดในการส่ง: {e}")
+                success = False
 
             if not success:
-                print("❌ ลองทุก Entry ID แล้วไม่สำเร็จ")
+                print("❌ ส่งข้อมูลไม่สำเร็จ")
                 return False
 
             # บันทึกว่าส่งแล้ว (ใช้ชื่อต้นฉบับเป็น key)
