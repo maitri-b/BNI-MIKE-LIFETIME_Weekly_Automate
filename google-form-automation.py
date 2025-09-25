@@ -317,23 +317,22 @@ class GoogleFormSubmitter:
             headers = worksheet.row_values(1)
             print(f"📋 Headers: {headers}")
 
-            # หาตำแหน่งคอลัมน์
-            timestamp_col = 1  # คอลัมน์แรกมักเป็น timestamp
-            name_col = None
-            business_col = None
+            # กำหนดตำแหน่งคอลัมน์ตามที่ต้องการ
+            timestamp_col = 1  # คอลัมน์ A - Timestamp
+            name_col = 2       # คอลัมน์ B - Name
+            business_col = 3   # คอลัมน์ C - Business Amount (ตามที่ต้องการ)
 
-            for i, header in enumerate(headers, 1):
-                header_lower = header.lower()
-                if any(keyword in header_lower for keyword in ['name', 'ชื่อ', 'user', 'member']):
-                    name_col = i
-                    print(f"📝 พบคอลัมน์ชื่อ: {header} (คอลัมน์ {i})")
-                elif any(keyword in header_lower for keyword in ['business', 'amount', 'ธุรกิจ', 'ยอด', 'lifetime']):
-                    business_col = i
-                    print(f"💰 พบคอลัมน์ยอดธุรกิจ: {header} (คอลัมน์ {i})")
+            print(f"📍 ใช้ตำแหน่งคอลัมน์:")
+            print(f"   A (1): Timestamp")
+            print(f"   B (2): Name")
+            print(f"   C (3): Business Amount")
 
-            if not name_col or not business_col:
-                print("❌ ไม่พบคอลัมน์ที่ต้องการในหัวข้อ")
+            # ตรวจสอบว่ามีคอลัมน์เพียงพอหรือไม่
+            if len(headers) < 3:
+                print(f"❌ Sheet มีเพียง {len(headers)} คอลัมน์ แต่ต้องการอย่างน้อย 3 คอลัมน์")
                 return False
+
+            print(f"✅ Sheet มี {len(headers)} คอลัมน์ เพียงพอสำหรับการบันทึก")
 
             # เตรียมข้อมูลแถวใหม่
             timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
