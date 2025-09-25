@@ -121,11 +121,21 @@ class GoogleFormSubmitter:
                 print(f"❌ Sheet มีเพียง {len(headers)} คอลัมน์ แต่ต้องการอย่างน้อย 3 คอลัมน์")
                 return False
 
-            # เตรียมข้อมูล - ใช้ timestamp string ในรูปแบบที่ Google Sheets เข้าใจ
+            # เตรียมข้อมูล - ใช้ serial number ของ datetime สำหรับ Google Sheets
             from datetime import datetime
+            import time
 
-            # แปลงเป็น string ในรูปแบบที่ Google Sheets จะ auto-detect เป็น datetime
-            timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")  # MM/DD/YYYY HH:MM:SS format
+            # ใช้ Unix timestamp แล้วแปลงเป็น Google Sheets serial number
+            # Google Sheets ใช้ serial date จาก 1899-12-30 เป็น day 1
+            now = datetime.now()
+
+            # คำนวณ serial number สำหรับ Google Sheets
+            # Google Sheets epoch: December 30, 1899
+            sheets_epoch = datetime(1899, 12, 30)
+            days_since_epoch = (now - sheets_epoch).total_seconds() / (24 * 60 * 60)
+
+            # ใช้ serial number แทน string
+            timestamp = days_since_epoch
 
             # แปลงยอดธุรกิจเป็นตัวเลข
             try:
@@ -138,11 +148,11 @@ class GoogleFormSubmitter:
 
             # สร้างแถวใหม่
             new_row = [''] * len(headers)
-            new_row[timestamp_col - 1] = timestamp           # MM/DD/YYYY HH:MM:SS string
+            new_row[timestamp_col - 1] = timestamp           # Google Sheets serial number
             new_row[name_col - 1] = name                    # string
             new_row[business_col - 1] = business_amount_num # number
 
-            print(f"📤 เพิ่มแถวใหม่: [{timestamp}, {name}, {business_amount_num}]")
+            print(f"📤 เพิ่มแถวใหม่: [{timestamp:.6f}, {name}, {business_amount_num}]")
 
             # เพิ่มแถวใหม่
             worksheet.append_row(new_row)
@@ -156,12 +166,20 @@ class GoogleFormSubmitter:
                 worksheet.format(cell_range, {
                     'numberFormat': {
                         'type': 'DATE_TIME',
-                        'pattern': 'm/d/yyyy h:mm:ss'
+                        'pattern': 'mm/dd/yyyy hh:mm:ss'
                     }
                 })
-                print(f"✅ Format timestamp cell {cell_range} สำเร็จ")
+                print(f"✅ Format timestamp cell {cell_range} เป็น datetime สำเร็จ")
             except Exception as format_error:
                 print(f"⚠️  ไม่สามารถ format timestamp cell: {format_error}")
+
+            # ตรวจสอบว่า cell เป็น datetime หรือไม่
+            try:
+                # อ่านค่ากลับมาเพื่อยืนยันว่าเป็น datetime
+                cell_value = worksheet.acell(f'A{last_row_num}').value
+                print(f"🔍 ค่าที่บันทึกใน cell A{last_row_num}: '{cell_value}' (type: {type(cell_value).__name__})")
+            except Exception as check_error:
+                print(f"⚠️  ไม่สามารถตรวจสอบค่า cell: {check_error}")
 
             print("✅ บันทึกข้อมูลใน Google Sheets สำเร็จ")
             return True
