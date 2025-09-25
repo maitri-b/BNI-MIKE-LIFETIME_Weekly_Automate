@@ -55,6 +55,7 @@ jobs:
           last_bni_data.json
           sent_form_data.json
         retention-days: 30
+        if-no-files-found: ignore
 
     - name: Upload logs on failure
       if: failure()
