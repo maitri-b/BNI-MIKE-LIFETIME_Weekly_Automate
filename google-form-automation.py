@@ -119,12 +119,12 @@ class GoogleFormSubmitter:
                     # ลองหาข้อมูล dropdown จาก script
                     try:
                         # ค้นหา pattern ของ dropdown options
-                        import re
                         pattern = r'"' + self.name_entry + r'"[^"]*"([^"]*)"'
                         matches = re.findall(pattern, script.string)
                         if matches:
                             print(f"🔍 พบข้อมูล dropdown ใน script: {len(matches)} matches")
-                    except:
+                    except Exception as e:
+                        print(f"⚠️  ไม่สามารถค้นหาจาก script: {e}")
                         pass
 
             if dropdown_options:
@@ -222,14 +222,19 @@ class GoogleFormSubmitter:
             # หาชื่อที่ตรงกันใน dropdown
             matched_name = self.find_best_name_match(name)
             if not matched_name:
-                print(f"❌ ไม่พบชื่อ '{name}' ใน dropdown options - ข้ามการส่ง")
-                return False
+                print(f"⚠️  ไม่พบชื่อ '{name}' ใน dropdown options - ใช้ชื่อเดิม")
+                matched_name = name  # ใช้ชื่อเดิมแทน
 
             # เตรียมข้อมูลสำหรับส่ง
             form_data = {
                 self.name_entry: matched_name,
                 self.business_entry: clean_amount
             }
+
+            # Debug: แสดงข้อมูลที่จะส่ง
+            print(f"🔧 Debug - Form Data:")
+            print(f"   {self.name_entry}: '{matched_name}'")
+            print(f"   {self.business_entry}: '{clean_amount}'")
 
             # ส่งข้อมูล
             print(f"📤 กำลังส่งข้อมูล: '{matched_name}' = {clean_amount}")
@@ -246,6 +251,13 @@ class GoogleFormSubmitter:
 
             if response.status_code == 200:
                 print(f"✅ ส่งข้อมูลสำเร็จ: '{matched_name}' = {clean_amount}")
+                # Debug: ตรวจสอบ response
+                if "Your response has been recorded" in response.text or "ข้อมูลของคุณได้รับการบันทึกแล้ว" in response.text:
+                    print("✅ ยืนยัน: Form ได้รับข้อมูลแล้ว")
+                else:
+                    print("⚠️  อาจมีปัญหา: ไม่พบข้อความยืนยันใน response")
+                    print(f"Response snippet: {response.text[:300]}...")
+
                 # บันทึกว่าส่งแล้ว (ใช้ชื่อต้นฉบับเป็น key)
                 self.sent_data[data_key] = datetime.now().isoformat()
                 self.save_sent_data()
@@ -253,7 +265,7 @@ class GoogleFormSubmitter:
             else:
                 print(f"❌ ส่งข้อมูลไม่สำเร็จ: Status {response.status_code}")
                 if response.text:
-                    print(f"Response: {response.text[:200]}...")
+                    print(f"Response: {response.text[:500]}...")
                 return False
 
         except Exception as e:
