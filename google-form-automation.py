@@ -25,8 +25,15 @@ class GoogleFormSubmitter:
         self.view_form_url = f"https://docs.google.com/forms/d/e/{self.form_id}/viewform"
 
         # Entry IDs (จะถูกอัปเดตจากการตรวจสอบ form จริง)
+        # สำหรับ multi-page form อาจต้องใช้ entry ID ที่แตกต่าง
         self.name_entry = "entry.683444359"  # ชื่อ (dropdown)
         self.business_entry = "entry.290745485"  # ยอดธุรกิจ Lifetime
+
+        # Alternative entry IDs ที่อาจใช้ได้ใน multi-page form
+        self.alt_entries = {
+            'name': ['entry.683444359', 'entry.1683444359', 'entry.83444359'],
+            'business': ['entry.290745485', 'entry.1290745485', 'entry.90745485']
+        }
 
         # Cache สำหรับ dropdown options
         self.dropdown_options = {}
@@ -215,58 +222,71 @@ class GoogleFormSubmitter:
                 print(f"ข้ามการส่ง: ข้อมูลของ {name} ยอด {clean_amount} เคยส่งไปแล้วเมื่อ {self.sent_data[data_key]}")
                 return False
 
-            # ตรวจสอบและอัปเดต dropdown options ทุกครั้งก่อนส่ง
-            print(f"🔄 ตรวจสอบ dropdown options สำหรับ: {name}")
-            self.fetch_form_structure()
+            # สำหรับ multi-page form ให้ส่งข้อมูลตรงๆ โดยไม่ต้องดึง dropdown options
+            print(f"📝 เตรียมส่งข้อมูลสำหรับ: {name}")
+            matched_name = name  # ใช้ชื่อเดิม
 
-            # หาชื่อที่ตรงกันใน dropdown
-            matched_name = self.find_best_name_match(name)
-            if not matched_name:
-                print(f"⚠️  ไม่พบชื่อ '{name}' ใน dropdown options - ใช้ชื่อเดิม")
-                matched_name = name  # ใช้ชื่อเดิมแทน
+            # ลองส่งด้วย entry IDs หลายตัวสำหรับ multi-page form
+            success = False
 
-            # เตรียมข้อมูลสำหรับส่ง
-            form_data = {
-                self.name_entry: matched_name,
-                self.business_entry: clean_amount
-            }
+            # ลองทั้งหมด combination ของ entry IDs
+            for name_entry in self.alt_entries['name']:
+                for business_entry in self.alt_entries['business']:
+                    form_data = {
+                        name_entry: matched_name,
+                        business_entry: clean_amount
+                    }
 
-            # Debug: แสดงข้อมูลที่จะส่ง
-            print(f"🔧 Debug - Form Data:")
-            print(f"   {self.name_entry}: '{matched_name}'")
-            print(f"   {self.business_entry}: '{clean_amount}'")
+                    # Debug: แสดงข้อมูลที่จะส่ง
+                    print(f"🔧 ทดลองส่งด้วย Entry IDs: {name_entry}, {business_entry}")
+                    print(f"   {name_entry}: '{matched_name}'")
+                    print(f"   {business_entry}: '{clean_amount}'")
 
-            # ส่งข้อมูล
-            print(f"📤 กำลังส่งข้อมูล: '{matched_name}' = {clean_amount}")
+                    # ส่งข้อมูล
+                    print(f"📤 กำลังส่งข้อมูล: '{matched_name}' = {clean_amount}")
 
-            response = requests.post(
-                self.form_url,
-                data=form_data,
-                headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                timeout=30
-            )
+                    try:
+                        response = requests.post(
+                            self.form_url,
+                            data=form_data,
+                            headers={
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                                'Content-Type': 'application/x-www-form-urlencoded'
+                            },
+                            timeout=30
+                        )
 
-            if response.status_code == 200:
-                print(f"✅ ส่งข้อมูลสำเร็จ: '{matched_name}' = {clean_amount}")
-                # Debug: ตรวจสอบ response
-                if "Your response has been recorded" in response.text or "ข้อมูลของคุณได้รับการบันทึกแล้ว" in response.text:
-                    print("✅ ยืนยัน: Form ได้รับข้อมูลแล้ว")
-                else:
-                    print("⚠️  อาจมีปัญหา: ไม่พบข้อความยืนยันใน response")
-                    print(f"Response snippet: {response.text[:300]}...")
+                        if response.status_code == 200:
+                            # ตรวจสอบว่าส่งสำเร็จจริงหรือไม่
+                            if ("Your response has been recorded" in response.text or
+                                "ข้อมูลของคุณได้รับการบันทึกแล้ว" in response.text or
+                                "การตอบกลับของคุณได้รับการบันทึกแล้ว" in response.text):
+                                print(f"✅ ส่งสำเร็จด้วย Entry IDs: {name_entry}, {business_entry}")
+                                success = True
+                                # บันทึก entry IDs ที่ใช้งานได้
+                                self.name_entry = name_entry
+                                self.business_entry = business_entry
+                                break
+                            else:
+                                print(f"⚠️  Response 200 แต่อาจไม่สำเร็จ: {response.text[:200]}...")
+                        else:
+                            print(f"❌ Status {response.status_code} สำหรับ {name_entry}, {business_entry}")
 
-                # บันทึกว่าส่งแล้ว (ใช้ชื่อต้นฉบับเป็น key)
-                self.sent_data[data_key] = datetime.now().isoformat()
-                self.save_sent_data()
-                return True
-            else:
-                print(f"❌ ส่งข้อมูลไม่สำเร็จ: Status {response.status_code}")
-                if response.text:
-                    print(f"Response: {response.text[:500]}...")
+                    except Exception as e:
+                        print(f"❌ Error สำหรับ {name_entry}, {business_entry}: {e}")
+                        continue
+
+                if success:
+                    break
+
+            if not success:
+                print("❌ ลองทุก Entry ID แล้วไม่สำเร็จ")
                 return False
+
+            # บันทึกว่าส่งแล้ว (ใช้ชื่อต้นฉบับเป็น key)
+            self.sent_data[data_key] = datetime.now().isoformat()
+            self.save_sent_data()
+            return True
 
         except Exception as e:
             print(f"❌ เกิดข้อผิดพลาดในการส่งข้อมูล: {e}")
