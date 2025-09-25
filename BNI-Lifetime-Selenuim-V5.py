@@ -920,8 +920,11 @@ def main():
     print("=" * 40)
     
     print("\nโปรแกรมทำงานเสร็จสิ้นแล้ว ไม่มีการบันทึกไฟล์เพิ่มเติม")
-    print("\nกด Enter เพื่อออกจากโปรแกรม...")
-    input()
+
+    # ตรวจสอบว่าทำงานใน automated environment หรือไม่
+    if not os.getenv('GITHUB_ACTIONS') and not os.getenv('CI'):
+        print("\nกด Enter เพื่อออกจากโปรแกรม...")
+        input()
 
 if __name__ == "__main__":
      main()    
