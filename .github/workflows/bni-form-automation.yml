@@ -2,8 +2,8 @@ name: BNI Form Automation - Scrape TYFCB and Submit to Google Form
 
 on:
   schedule:
-    # รันทุกวันพฤหัส เวลา 18:15 น. (UTC) = 01:15 น. วันศุกร์ เวลาไทย (เที่ยงคืน 1 นาที)
-    - cron: '15 18 * * 4'
+    # รันทุกวันจันทร์ เวลา 18:15 น. (UTC) = 01:15 น. วันอังคาร เวลาไทย (ตี 1.15 นาที)
+    - cron: '15 18 * * 2'
   workflow_dispatch:
     inputs:
       force_run:
