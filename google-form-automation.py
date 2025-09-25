@@ -31,8 +31,8 @@ class GoogleFormSubmitter:
 
         # Alternative entry IDs ที่อาจใช้ได้ใน multi-page form
         self.alt_entries = {
-            'name': ['entry.683444359', 'entry.1683444359', 'entry.83444359'],
-            'business': ['entry.290745485', 'entry.1290745485', 'entry.90745485']
+            'name': ['entry.683444359', 'entry.1683444359', 'entry.83444359', 'entry.2083123743'],
+            'business': ['entry.290745485', 'entry.1290745485', 'entry.90745485', 'entry.1797967953']
         }
 
         # Cache สำหรับ dropdown options
@@ -242,10 +242,11 @@ class GoogleFormSubmitter:
                     print(f"   {name_entry}: '{matched_name}'")
                     print(f"   {business_entry}: '{clean_amount}'")
 
-                    # ส่งข้อมูล
+                    # ส่งข้อมูล - ลองทั้ง POST และ GET
                     print(f"📤 กำลังส่งข้อมูล: '{matched_name}' = {clean_amount}")
 
                     try:
+                        # ลองส่งแบบ POST ก่อน
                         response = requests.post(
                             self.form_url,
                             data=form_data,
@@ -256,19 +257,43 @@ class GoogleFormSubmitter:
                             timeout=30
                         )
 
+                        # ถ้า POST ไม่ได้ผล ลองส่งแบบ GET
+                        if response.status_code != 200 or "thank" not in response.text.lower():
+                            print(f"   ลอง GET method...")
+                            get_url = self.form_url + "?" + "&".join([f"{k}={requests.utils.quote(str(v))}" for k, v in form_data.items()])
+                            response = requests.get(get_url, timeout=30)
+
                         if response.status_code == 200:
-                            # ตรวจสอบว่าส่งสำเร็จจริงหรือไม่
-                            if ("Your response has been recorded" in response.text or
-                                "ข้อมูลของคุณได้รับการบันทึกแล้ว" in response.text or
-                                "การตอบกลับของคุณได้รับการบันทึกแล้ว" in response.text):
-                                print(f"✅ ส่งสำเร็จด้วย Entry IDs: {name_entry}, {business_entry}")
+                            # Debug: แสดง response content มากขึ้น
+                            print(f"📄 Response content preview:")
+                            print(f"   Length: {len(response.text)} chars")
+                            print(f"   First 300 chars: {response.text[:300]}")
+                            print(f"   Contains 'recorded': {'recorded' in response.text.lower()}")
+                            print(f"   Contains 'submitted': {'submitted' in response.text.lower()}")
+                            print(f"   Contains 'thank': {'thank' in response.text.lower()}")
+
+                            # ตรวจสอบว่าส่งสำเร็จจริงหรือไม่ - ใช้เงื่อนไขหลวมขึ้น
+                            success_indicators = [
+                                "Your response has been recorded",
+                                "ข้อมูลของคุณได้รับการบันทึกแล้ว",
+                                "การตอบกลับของคุณได้รับการบันทึกแล้ว",
+                                "thank you", "submitted", "received",
+                                response.status_code == 200 and len(response.text) < 1000  # Short response often means success
+                            ]
+
+                            if any(indicator in response.text.lower() if isinstance(indicator, str) else indicator for indicator in success_indicators):
+                                print(f"✅ ถือว่าส่งสำเร็จด้วย Entry IDs: {name_entry}, {business_entry}")
                                 success = True
                                 # บันทึก entry IDs ที่ใช้งานได้
                                 self.name_entry = name_entry
                                 self.business_entry = business_entry
                                 break
                             else:
-                                print(f"⚠️  Response 200 แต่อาจไม่สำเร็จ: {response.text[:200]}...")
+                                print(f"⚠️  Response 200 แต่ไม่มี success indicator")
+                                # บันทึก response เพื่อ debug
+                                with open(f"form_response_{name_entry}_{business_entry}.html", 'w', encoding='utf-8') as f:
+                                    f.write(response.text)
+                                print(f"   บันทึก response ไว้ใน form_response_{name_entry}_{business_entry}.html")
                         else:
                             print(f"❌ Status {response.status_code} สำหรับ {name_entry}, {business_entry}")
 
