@@ -1,0 +1,67 @@
+name: BNI Google Form Automation
+
+on:
+  schedule:
+    # ตรวจสอบข้อมูลใหม่ทุกชั่วโมง
+    - cron: '0 * * * *'
+  workflow_dispatch: # อนุญาตให้รันด้วยตนเองได้
+    inputs:
+      force_check:
+        description: 'Force check all data (ignore last check)'
+        required: false
+        default: 'false'
+
+jobs:
+  check-and-submit:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests gspread google-auth
+
+    - name: Setup Google Sheets credentials
+      run: |
+        echo '${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}' > google-sheets-credentials.json
+
+    - name: Load previous state (if exists)
+      run: |
+        # ดาวน์โหลด artifacts จาก run ก่อนหน้า (ถ้ามี)
+        echo "ตรวจสอบ state ก่อนหน้า..."
+
+    - name: Run Google Form automation
+      env:
+        GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
+        GOOGLE_SHEET_NAME: ${{ secrets.GOOGLE_SHEET_NAME }}
+        FORCE_CHECK: ${{ github.event.inputs.force_check }}
+      run: |
+        # รัน script automation
+        python google-form-automation.py
+
+    - name: Save state for next run
+      uses: actions/upload-artifact@v4
+      with:
+        name: automation-state
+        path: |
+          last_bni_data.json
+          sent_form_data.json
+        retention-days: 30
+
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: failure-logs-form
+        path: |
+          *.log
+          *.json
+        retention-days: 7
