@@ -294,39 +294,98 @@ class GoogleFormSubmitter:
             print(f"📝 เตรียมส่งข้อมูลสำหรับ: {name}")
             matched_name = name  # ใช้ชื่อเดิม
 
-            # หาค่า entry IDs ที่ถูกต้องจาก form source แทนการทดลองส่ง
-            correct_entries = self.find_correct_entry_ids()
-            if correct_entries:
-                self.name_entry = correct_entries['name']
-                self.business_entry = correct_entries['business']
-                print(f"✅ ใช้ Entry IDs: {self.name_entry}, {self.business_entry}")
-            else:
-                print("⚠️  ไม่พบ Entry IDs ที่ถูกต้อง - ใช้ค่าเริ่มต้น")
+            # ใช้ entry IDs ที่ยืนยันจาก prefill URL
+            confirmed_name_entry = "entry.683444359"
+            confirmed_business_entry = "entry.290745485"
 
-            # เตรียมข้อมูลสำหรับส่ง
+            print(f"✅ ใช้ Entry IDs ที่ยืนยันจาก prefill URL: {confirmed_name_entry}, {confirmed_business_entry}")
+
+            # เตรียมข้อมูลสำหรับส่ง - ใช้ URL encoding เหมือน prefill
+            import urllib.parse
+
+            # URL encode ข้อมูลเหมือน prefill URL
+            encoded_name = urllib.parse.quote_plus(matched_name)
+            encoded_amount = urllib.parse.quote_plus(clean_amount)
+
+            # ลองส่งแบบ GET parameters เหมือน prefill URL ก่อน
+            prefill_url = (f"https://docs.google.com/forms/d/e/{self.form_id}/viewform"
+                          f"?usp=pp_url&{confirmed_name_entry}={encoded_name}"
+                          f"&{confirmed_business_entry}={encoded_amount}")
+
+            print(f"🔧 Prefill URL: {prefill_url}")
+
+            # แต่ส่งข้อมูลไปที่ formResponse endpoint
             form_data = {
-                self.name_entry: matched_name,
-                self.business_entry: clean_amount
+                confirmed_name_entry: matched_name,
+                confirmed_business_entry: clean_amount
             }
 
             # Debug: แสดงข้อมูลที่จะส่ง
             print(f"🔧 Form Data:")
-            print(f"   {self.name_entry}: '{matched_name}'")
-            print(f"   {self.business_entry}: '{clean_amount}'")
+            print(f"   {confirmed_name_entry}: '{matched_name}'")
+            print(f"   {confirmed_business_entry}: '{clean_amount}'")
 
             # ส่งข้อมูล
             print(f"📤 กำลังส่งข้อมูล: '{matched_name}' = {clean_amount}")
 
             try:
+                # Method 1: ส่งแบบ POST ปกติ
                 response = requests.post(
                     self.form_url,
                     data=form_data,
                     headers={
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Content-Type': 'application/x-www-form-urlencoded'
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Referer': prefill_url  # เพิ่ม referer จาก prefill URL
                     },
                     timeout=30
                 )
+
+                print(f"📄 POST Response: Status {response.status_code}")
+
+                # Method 2: ถ้า POST ไม่ได้ผล ลองส่งไป formResponse ด้วย GET parameters
+                if response.status_code != 200 or "thank" not in response.text.lower():
+                    print("   ลอง GET method ไป formResponse...")
+                    form_get_url = (f"{self.form_url}?{confirmed_name_entry}={encoded_name}"
+                                   f"&{confirmed_business_entry}={encoded_amount}")
+
+                    get_response = requests.get(form_get_url, headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Referer': prefill_url
+                    }, timeout=30)
+
+                    print(f"📄 GET formResponse: Status {get_response.status_code}")
+
+                    if get_response.status_code == 200:
+                        response = get_response
+
+                # Method 3: ลองส่งแบบ POST แต่มี submit parameter
+                if response.status_code != 200 or "thank" not in response.text.lower():
+                    print("   ลอง POST method พร้อม submit parameter...")
+                    submit_data = form_data.copy()
+                    submit_data.update({
+                        'submit': 'Submit',
+                        'usp': 'pp_url',
+                        'fvv': '1',
+                        'pageHistory': '0'
+                    })
+
+                    submit_response = requests.post(
+                        self.form_url,
+                        data=submit_data,
+                        headers={
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'Referer': prefill_url,
+                            'Origin': 'https://docs.google.com'
+                        },
+                        timeout=30
+                    )
+
+                    print(f"📄 POST with submit: Status {submit_response.status_code}")
+
+                    if submit_response.status_code == 200:
+                        response = submit_response
 
                 if response.status_code == 200:
                     print(f"📄 Response: Status {response.status_code}, Length: {len(response.text)} chars")
