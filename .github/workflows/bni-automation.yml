@@ -2,8 +2,8 @@ name: BNI TYFCB Data Automation
 
 on:
   schedule:
-    # รันทุกวันพฤหัสเวลา 06:28 UTC (13:28 เวลาไทย)
-    - cron: '28 6 * * 4'
+    # รันทุกวันอังคารเวลา 23:00 UTC (06:00 เวลาไทย)
+    - cron: '0 23 * * 1'
   workflow_dispatch: # อนุญาตให้รันด้วยตนเองได้
 
 jobs:
